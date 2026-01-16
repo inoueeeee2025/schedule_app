@@ -1,0 +1,191 @@
+﻿<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>週間スケジュール</title>
+  <meta name="theme-color" content="#2b6cb0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="週間スケジュール">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="icon" sizes="192x192" href="/icons/icon-192.png">
+  <link rel="icon" sizes="512x512" href="/icons/icon-512.png">
+  <link rel="stylesheet" href="style.css">
+  <meta name="mobile-web-app-capable" content="yes">
+
+</head>
+<body>
+  <div class="week-navigation">
+    <div class="auth-group">
+      <button id="authOpen" class="auth-open">ログイン</button>
+      <button id="authLogout" class="auth-logout" disabled>ログアウト</button>
+    </div>
+    <div class="week-nav-controls">
+      <button id="prevWeek">←</button>
+      <span id="weekLabel">2025年10月第4週</span>
+      <button id="bulkDeleteOpen" class="bulk-delete-open">一括削除</button>
+      <button id="nextWeek">→</button>
+    </div>
+    <div class="auth-info">
+      <div id="authStatus" class="auth-status">同期状態: 未ログイン</div>
+      <div class="sync-note">同期（複数端末/バックアップ）はプレミアム限定</div>
+      <button id="syncRefresh" class="sync-refresh" type="button">同期を有効化</button>
+      <div id="syncMessage" class="sync-message" aria-live="polite"></div>
+    </div>
+  </div>
+  <div class="week-view" id="weekView"></div>
+
+  <!-- モーダル -->
+  <div class="modal" id="modal">
+    <div class="modal-content">
+      <h3 id="modalTitle">予定を追加</h3>
+
+      <label>タイトル
+        <input id="title" placeholder="例：アルバイト" />
+      </label>
+
+      <label>種類
+        <select id="type"></select>
+      </label>
+      <button id="typeAddOpen" type="button" class="type-add-open">種類を追加</button>
+      <div id="typeAddPanel" class="type-add-panel">
+        <div class="type-add-row">
+          <input id="typeNew" type="text" placeholder="例：ゼミ、塾 など">
+          <input id="typeColor" type="color" value="#5b8def" aria-label="種類の色">
+          <button id="typeAdd" type="button">追加</button>
+        </div>
+        <label class="tap-toggle-row">
+          <span>完了／未完了を切り替え</span>
+          <span class="toggle-switch">
+            <input id="tapToggle" type="checkbox">
+            <span class="toggle-slider" aria-hidden="true"></span>
+          </span>
+        </label>
+        <button id="typeAddClose" type="button" class="type-add-close">閉じる</button>
+      </div>
+
+      <label>開始時間
+        <input id="start" type="time" value="09:00">
+      </label>
+
+      <label>終了時間
+        <input id="end" type="time" value="10:00">
+      </label>
+
+      <label>
+        繰り返し
+        <select id="repeat">
+          <option value="none">繰り返しなし</option>
+          <option value="daily">毎日</option>
+          <option value="weekly">毎週</option>
+          <option value="weekday">平日のみ</option>
+        </select>
+      </label>
+      <div class="delete-scope-row" id="deleteScopeRow">
+        <label>削除対象
+          <select id="deleteScope">
+            <option value="single">この1件だけ削除</option>
+            <option value="future">これ以降の繰り返しを削除</option>
+            <option value="all">この予定をすべて削除</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="buttons">
+        <button id="save">保存</button>
+        <button id="delete">削除</button>
+        <button id="cancel">キャンセル</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 一括削除モーダル -->
+  <div class="modal" id="bulkModal">
+    <div class="modal-content bulk-content">
+      <h3>予定をまとめて削除</h3>
+      <p class="bulk-note">削除したい予定にチェックを付けてください</p>
+      <div class="delete-scope-row bulk-scope-row">
+        <label>削除対象
+          <select id="bulkDeleteScope">
+            <option value="single">この1件だけ削除</option>
+            <option value="future">これ以降の繰り返しを削除</option>
+            <option value="all">この予定をすべて削除</option>
+          </select>
+        </label>
+      </div>
+      <ul id="bulkList" class="bulk-list"></ul>
+      <div class="buttons bulk-buttons">
+        <button id="bulkDelete">選択を削除</button>
+        <button id="bulkCancel">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 日別ToDoパネル -->
+  <div class="todo-panel" id="todoPanel" aria-hidden="true">
+    <div class="todo-inner">
+      <div class="todo-header">
+        <h3 id="todoDateLabel">ToDo</h3>
+        <button id="todoClose" class="todo-close" aria-label="閉じる">×</button>
+      </div>
+
+      <div class="todo-input-row">
+        <input id="todoInput" type="text" placeholder="やることを入力してEnter…" />
+        <button id="todoAdd">追加</button>
+      </div>
+
+      <ul id="todoList" class="todo-list"></ul>
+
+      <div class="todo-memo">
+        <label for="todoMemo">メモ</label>
+        <div id="todoMemoText" class="todo-memo-text"></div>
+        <textarea id="todoMemo" placeholder="この日のメモを書いてください"></textarea>
+        <div class="todo-memo-buttons">
+          <button id="todoMemoEdit" class="muted">メモを編集</button>
+          <button id="todoMemoSave" class="muted">メモを保存</button>
+        </div>
+      </div>
+
+      <div class="todo-footer">
+        <button id="todoClearDone" class="muted">完了を一括削除</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ログインモーダル -->
+  <div class="modal" id="authModal">
+    <div class="modal-content auth-modal">
+      <h3>ログイン</h3>
+      <p class="auth-note">ログインは無料でも利用できます。同期（複数端末/バックアップ）はプレミアム限定です。</p>
+      <label>メールアドレス
+        <input id="authEmail" type="email" placeholder="メールアドレスを入力してください">
+      </label>
+      <label>パスワード
+        <input id="authPassword" type="password" placeholder="パスワードを入力してください">
+      </label>
+      <div class="buttons auth-buttons">
+        <button id="authLogin">ログイン</button>
+        <button id="authCancel" class="muted">閉じる</button>
+      </div>
+      <button id="upgradeBtn" class="upgrade-link">アップグレード（課金登録）はこちら</button>
+    </div>
+  </div>
+
+
+  <!-- script.js は body の一番下 -->
+  <script type="module" src="script.js"></script>
+  <script>
+    (function () {
+      if (!("serviceWorker" in navigator)) return;
+      window.addEventListener("load", function () {
+        navigator.serviceWorker.register("/service-worker.js", { scope: "/" })
+          .catch(function (err) {
+            console.warn("ServiceWorker registration failed:", err);
+          });
+      });
+    })();
+  </script>
+</body>
+</html>
