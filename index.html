@@ -19,18 +19,22 @@
 <body>
   <div class="week-navigation">
     <div class="auth-group">
+      <button id="plusOpen" class="auth-plus">Plusプラン</button>
       <button id="authOpen" class="auth-open">ログイン</button>
       <button id="authLogout" class="auth-logout" disabled>ログアウト</button>
     </div>
     <div class="week-nav-controls">
       <button id="prevWeek">←</button>
-      <span id="weekLabel">2025年10月第4週</span>
+      <button id="weekLabel" class="week-label-btn" type="button">2025年10月第4週</button>
       <button id="bulkDeleteOpen" class="bulk-delete-open">一括削除</button>
       <button id="nextWeek">→</button>
     </div>
     <div class="auth-info">
-      <div id="authStatus" class="auth-status">同期状態: 未ログイン</div>
-      <div class="sync-note">同期（複数端末/バックアップ）はプレミアム限定</div>
+      <div id="authStatus" class="auth-status">未ログイン</div>
+      <div class="legal-links">
+        <a href="/privacy.html" target="_blank" rel="noopener">プライバシーポリシー</a>
+        <a href="/terms.html" target="_blank" rel="noopener">利用規約</a>
+      </div>
       <button id="syncRefresh" class="sync-refresh" type="button">同期を有効化</button>
       <div id="syncMessage" class="sync-message" aria-live="polite"></div>
     </div>
@@ -54,8 +58,31 @@
         <div class="type-add-row">
           <input id="typeNew" type="text" placeholder="例：ゼミ、塾 など">
           <input id="typeColor" type="color" value="#5b8def" aria-label="種類の色">
+          <span id="typeColorPreview" class="color-preview" aria-label="選択中の色"></span>
           <button id="typeAdd" type="button">追加</button>
         </div>
+        <div class="type-color-palette" aria-label="色のプリセット">
+          <button type="button" class="color-swatch" data-color="#123060" style="background:#123060" aria-label="色を選択"></button>
+          <button type="button" class="color-swatch" data-color="#5b8def" style="background:#5b8def" aria-label="色を選択"></button>
+          <button type="button" class="color-swatch" data-color="#0ea5e9" style="background:#0ea5e9" aria-label="色を選択"></button>
+          <button type="button" class="color-swatch" data-color="#7cc7ff" style="background:#7cc7ff" aria-label="色を選択"></button>
+          <button type="button" class="color-swatch" data-color="#10b981" style="background:#10b981" aria-label="色を選択"></button>
+          <button type="button" class="color-swatch" data-color="#f6c344" style="background:#f6c344" aria-label="色を選択"></button>
+          <button type="button" class="color-swatch" data-color="#d97706" style="background:#d97706" aria-label="色を選択"></button>
+          <button type="button" class="color-swatch" data-color="#ff8c00" style="background:#ff8c00" aria-label="色を選択"></button>
+          <button type="button" class="color-swatch" data-color="#ef4444" style="background:#ef4444" aria-label="色を選択"></button>
+          <button type="button" class="color-swatch" data-color="#8b5cf6" style="background:#8b5cf6" aria-label="色を選択"></button>
+          <button type="button" class="color-swatch" data-color="#8b5e3b" style="background:#8b5e3b" aria-label="色を選択"></button>
+          <button type="button" class="color-swatch" data-color="#333333" style="background:#333333" aria-label="色を選択"></button>
+          <button id="typeColorFreeBtn" type="button" class="color-free" aria-label="自由に色を選ぶ">
+            <img src="image/color-wheel.png" alt="" class="color-wheel-icon">
+          </button>
+        </div>
+        <div class="type-edit-row">
+          <button id="typeEditSave" type="button" disabled>変更を保存</button>
+          <button id="typeEditCancel" type="button" disabled>編集を解除</button>
+        </div>
+        <ul id="typeList" class="type-list"></ul>
         <label class="tap-toggle-row">
           <span>完了／未完了を切り替え</span>
           <span class="toggle-switch">
@@ -136,15 +163,17 @@
         <button id="todoAdd">追加</button>
       </div>
 
-      <ul id="todoList" class="todo-list"></ul>
+      <div class="todo-scroll">
+        <ul id="todoList" class="todo-list"></ul>
 
-      <div class="todo-memo">
-        <label for="todoMemo">メモ</label>
-        <div id="todoMemoText" class="todo-memo-text"></div>
-        <textarea id="todoMemo" placeholder="この日のメモを書いてください"></textarea>
-        <div class="todo-memo-buttons">
-          <button id="todoMemoEdit" class="muted">メモを編集</button>
-          <button id="todoMemoSave" class="muted">メモを保存</button>
+        <div class="todo-memo">
+          <label for="todoMemo">メモ</label>
+          <div id="todoMemoText" class="todo-memo-text"></div>
+          <textarea id="todoMemo" placeholder="この日のメモを書いてください"></textarea>
+          <div class="todo-memo-buttons">
+            <button id="todoMemoEdit" class="muted">メモを編集</button>
+            <button id="todoMemoSave" class="muted">メモを保存</button>
+          </div>
         </div>
       </div>
 
@@ -158,18 +187,98 @@
   <div class="modal" id="authModal">
     <div class="modal-content auth-modal">
       <h3>ログイン</h3>
-      <p class="auth-note">ログインは無料でも利用できます。同期（複数端末/バックアップ）はプレミアム限定です。</p>
-      <label>メールアドレス
-        <input id="authEmail" type="email" placeholder="メールアドレスを入力してください">
-      </label>
-      <label>パスワード
-        <input id="authPassword" type="password" placeholder="パスワードを入力してください">
-      </label>
+      <p class="auth-note">Plusユーザーのみログイン可能です。</p>
+      <label for="authEmail">メールアドレス</label>
+      <input id="authEmail" type="email" placeholder="メールアドレスを入力してください">
+      <label for="authPassword">パスワード</label>
+      <input id="authPassword" type="password" placeholder="パスワードを入力してください">
+      <div id="authError" class="auth-error" aria-live="polite"></div>
       <div class="buttons auth-buttons">
         <button id="authLogin">ログイン</button>
         <button id="authCancel" class="muted">閉じる</button>
       </div>
-      <button id="upgradeBtn" class="upgrade-link">アップグレード（課金登録）はこちら</button>
+      <button id="upgradeBtn" class="upgrade-link">Plusプランはこちら</button>
+    </div>
+  </div>
+
+  <!-- 日付ジャンプ（カレンダー）モーダル -->
+  <div class="modal" id="datePickerModal">
+    <div class="date-picker-solo">
+      <div class="date-picker-title">日付を選択</div>
+      <div class="date-picker-row">
+        <label class="date-picker-label" for="datePickerYear">年</label>
+        <select id="datePickerYear" aria-label="年"></select>
+        <label class="date-picker-label" for="datePickerMonth">月</label>
+        <select id="datePickerMonth" aria-label="月"></select>
+        <label class="date-picker-label" for="datePickerDay">日</label>
+        <select id="datePickerDay" aria-label="日"></select>
+        <button id="datePickerCalendarToggle" type="button" aria-label="カレンダーを開く">📅</button>
+      </div>
+      <div id="datePickerCalendar" class="date-picker-calendar" aria-hidden="true"></div>
+      <div class="date-picker-actions">
+        <button id="datePickerSearch" type="button">検索</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Plusプラン説明モーダル -->
+  <div class="modal" id="plusModal">
+    <div class="modal-content auth-modal plus-modal-content">
+      <h3>Plusプラン</h3>
+      <p class="plus-description">複数端末でもデータが自動で保持・同期されます。</p>
+      <div class="plus-illustrations">
+        <figure class="plus-illust">
+          <img id="plusPcImage"  src="image/usingcomputer_man_mono.png" alt="PCで計画するイメージ">
+          <figcaption>PCで計画</figcaption>
+        </figure>
+        <figure class="plus-illust">
+          <img id="plusMobileImage" class="plus-illust-right" src="image/smartphone_woman_02_mono.png" alt="スマホでToDoを消化するイメージ">
+          <figcaption>スマホでToDo消化</figcaption>
+        </figure>
+      </div>
+      <div id="plusError" class="auth-error" aria-live="polite"></div>
+      <div class="buttons auth-buttons">
+        <button id="plusChange">Plusプランに変更</button>
+        <button id="plusClose" class="muted">閉じる</button>
+      </div>
+      <button id="plusLoginOpen" class="upgrade-link">すでにアカウントをお持ちの方はこちら</button>
+    </div>
+  </div>
+
+  <!-- 新規登録モーダル -->
+  <div class="modal" id="signupModal">
+    <div class="modal-content auth-modal">
+      <h3>新規登録</h3>
+      <p class="auth-note">Plusプランをご利用いただくための新規登録です。</p>
+      <label for="signupEmail">メールアドレス</label>
+      <input id="signupEmail" type="email" placeholder="メールアドレスを入力してください">
+      <label for="signupPassword">パスワード</label>
+      <input id="signupPassword" type="password" placeholder="8文字以上のパスワード">
+      <label for="signupPasswordConfirm">パスワード確認</label>
+      <input id="signupPasswordConfirm" type="password" placeholder="もう一度入力してください">
+      <label class="terms-row">
+        <input id="signupTerms" type="checkbox">
+        <span><a href="/terms.html" target="_blank" rel="noopener">利用規約</a>に同意します</span>
+      </label>
+      <div id="signupError" class="auth-error" aria-live="polite"></div>
+      <div class="buttons auth-buttons">
+        <button id="signupSubmit">登録</button>
+        <button id="signupCancel" class="muted">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 課金モーダル（モック） -->
+  <div class="modal" id="paymentModal">
+    <div class="modal-content auth-modal">
+      <h3>Plusプラン</h3>
+      <p class="auth-note">月額240円</p>
+      <div id="paymentError" class="auth-error" aria-live="polite"></div>
+      <div class="buttons auth-buttons">
+        <button id="paymentSubmit">支払いに進む</button>
+        <button id="paymentBack" class="muted">戻る</button>
+      </div>
+      <p class="payment-note">※この画面はモック決済です。本番はStripe等の決済導入が必要です。</p>
     </div>
   </div>
 

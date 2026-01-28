@@ -14,6 +14,11 @@ const typeAddOpenBtn = document.getElementById("typeAddOpen");
 const typeAddCloseBtn = document.getElementById("typeAddClose");
 const typeAddPanel = document.getElementById("typeAddPanel");
 const typeColorInput = document.getElementById("typeColor");
+const typeColorPreview = document.getElementById("typeColorPreview");
+const typeColorFreeBtn = document.getElementById("typeColorFreeBtn");
+const typeEditSaveBtn = document.getElementById("typeEditSave");
+const typeEditCancelBtn = document.getElementById("typeEditCancel");
+const typeList = document.getElementById("typeList");
 const tapToggleInput = document.getElementById("tapToggle");
 const startInput = document.getElementById("start");
 const endInput = document.getElementById("end");
@@ -41,26 +46,62 @@ const todoMemoEdit = document.getElementById("todoMemoEdit");
 const todoMemoSave = document.getElementById("todoMemoSave");
 const todoClose = document.getElementById("todoClose");
 const todoClearDone = document.getElementById("todoClearDone");
+const plusOpenBtn = document.getElementById("plusOpen");
 const authOpenBtn = document.getElementById("authOpen");
 const authModal = document.getElementById("authModal");
+const plusModal = document.getElementById("plusModal");
+const signupModal = document.getElementById("signupModal");
+const paymentModal = document.getElementById("paymentModal");
 const authCancelBtn = document.getElementById("authCancel");
+const plusCloseBtn = document.getElementById("plusClose");
+const signupCancelBtn = document.getElementById("signupCancel");
+const paymentBackBtn = document.getElementById("paymentBack");
 const upgradeBtn = document.getElementById("upgradeBtn");
 const authLogoutBtn = document.getElementById("authLogout");
 const authEmail = document.getElementById("authEmail");
 const authPassword = document.getElementById("authPassword");
 const authLoginBtn = document.getElementById("authLogin");
+const authError = document.getElementById("authError");
+const plusLoginOpenBtn = document.getElementById("plusLoginOpen");
+const plusChangeBtn = document.getElementById("plusChange");
+const plusError = document.getElementById("plusError");
+const signupEmail = document.getElementById("signupEmail");
+const signupPassword = document.getElementById("signupPassword");
+const signupPasswordConfirm = document.getElementById("signupPasswordConfirm");
+const signupTerms = document.getElementById("signupTerms");
+const signupSubmitBtn = document.getElementById("signupSubmit");
+const signupError = document.getElementById("signupError");
+const paymentSubmitBtn = document.getElementById("paymentSubmit");
+const paymentError = document.getElementById("paymentError");
 const authStatus = document.getElementById("authStatus");
+const weekLabelBtn = document.getElementById("weekLabel");
+const datePickerModal = document.getElementById("datePickerModal");
+const datePickerYear = document.getElementById("datePickerYear");
+const datePickerMonth = document.getElementById("datePickerMonth");
+const datePickerDay = document.getElementById("datePickerDay");
+const datePickerSearch = document.getElementById("datePickerSearch");
+const datePickerCalendarToggle = document.getElementById("datePickerCalendarToggle");
+const datePickerCalendar = document.getElementById("datePickerCalendar");
 const syncRefreshBtn = document.getElementById("syncRefresh");
 const syncMessage = document.getElementById("syncMessage");
 
-function setAuthUI(isLoggedIn) {
-    authOpenBtn.style.display = isLoggedIn ? "none" : "inline-block";
-    authLogoutBtn.style.display = isLoggedIn ? "inline-block" : "none";
+function setAuthUI(isLoggedIn, plan) {
+    const isPlus = plan === "plus";
+    if (plusOpenBtn) plusOpenBtn.style.display = isPlus ? "none" : "inline-block";
+    if (authOpenBtn) authOpenBtn.style.display = isPlus ? "none" : "inline-block";
+    authLogoutBtn.style.display = isPlus ? "inline-block" : "none";
     if (!isLoggedIn && syncRefreshBtn) syncRefreshBtn.style.display = "none";
 }
 
 // 現在表示中のToDoのキー（日付）を保持
 let currentTodoDateKey = null;
+
+// Auth state
+const authState = {
+    isLoggedIn: false,
+    plan: "free",
+    user: null
+};
 
 // Firebase
 const firebaseConfig = {
@@ -83,6 +124,7 @@ let syncEnabled = false;
 let selectedDay = null;
 let editingEvent = null;
 let currentWeek = new Date();
+let pendingUpgrade = false;
 
 const baseEventTypes = [
     { id: "school", label: "学校", color: "rgba(34, 34, 34, 0.75)" },
@@ -92,7 +134,25 @@ const baseEventTypes = [
     { id: "errand", label: "用事", color: "rgba(18, 48, 96, 0.75)" },
     { id: "sports", label: "運動", color: "rgba(255, 140, 0, 0.75)" }
 ];
-const customTypeColors = ["#5b8def", "#d97706", "#10b981", "#ef4444", "#8b5cf6", "#0ea5e9"];
+const baseTypeOverridesKey = "base-event-type-overrides";
+const baseTypeDeletedKey = "base-event-type-deleted";
+const customTypePalette = [
+    "#123060",
+    "#5b8def",
+    "#0ea5e9",
+    "#7cc7ff",
+    "#10b981",
+    "#f6c344",
+    "#d97706",
+    "#ff8c00",
+    "#ef4444",
+    "#8b5cf6",
+    "#8b5e3b",
+    "#333333"
+];
+
+let editingTypeId = null;
+let editingTypeIsBase = false;
 
 function loadCustomTypes() {
     try { return JSON.parse(localStorage.getItem("custom-event-types") || "[]"); }
@@ -103,48 +163,223 @@ function saveCustomTypes(types) {
     localStorage.setItem("custom-event-types", JSON.stringify(types));
 }
 
+function getVisibleCustomTypes() {
+    return loadCustomTypes().filter(t => !t.deleted);
+}
+
 function getCustomTypeById(id) {
     return loadCustomTypes().find(t => t.id === id);
 }
 
+function loadBaseTypeOverrides() {
+    try { return JSON.parse(localStorage.getItem(baseTypeOverridesKey) || "{}"); }
+    catch { return {}; }
+}
+
+function saveBaseTypeOverrides(overrides) {
+    localStorage.setItem(baseTypeOverridesKey, JSON.stringify(overrides));
+}
+
+function loadDeletedBaseTypes() {
+    try { return JSON.parse(localStorage.getItem(baseTypeDeletedKey) || "[]"); }
+    catch { return []; }
+}
+
+function saveDeletedBaseTypes(ids) {
+    localStorage.setItem(baseTypeDeletedKey, JSON.stringify(ids));
+}
+
+function getBaseTypes() {
+    const overrides = loadBaseTypeOverrides();
+    const deleted = new Set(loadDeletedBaseTypes());
+    return baseEventTypes
+        .filter(t => !deleted.has(t.id))
+        .map(t => ({ ...t, ...(overrides[t.id] || {}) }));
+}
+
+function getAllTypes() {
+    return [...getBaseTypes(), ...getVisibleCustomTypes()];
+}
+
 function renderTypeOptions(selectedId) {
     if (!typeSelect) return;
-    const customTypes = loadCustomTypes();
+    const allTypes = getAllTypes();
     typeSelect.innerHTML = "";
-    baseEventTypes.forEach(t => {
+    allTypes.forEach(t => {
         const opt = document.createElement("option");
         opt.value = t.id;
         opt.textContent = t.label;
         typeSelect.appendChild(opt);
     });
-    customTypes.forEach(t => {
+    if (selectedId && !allTypes.some(t => t.id === selectedId)) {
+        const baseFallback = baseEventTypes.find(t => t.id === selectedId);
+        const customFallback = loadCustomTypes().find(t => t.id === selectedId);
+        const label = baseFallback?.label || customFallback?.label || selectedId;
         const opt = document.createElement("option");
-        opt.value = t.id;
-        opt.textContent = t.label;
+        opt.value = selectedId;
+        opt.textContent = label;
         typeSelect.appendChild(opt);
+        typeSelect.value = selectedId;
+        return;
+    }
+    if (allTypes.length === 0) return;
+    const fallbackId = allTypes[0].id;
+    typeSelect.value = selectedId && allTypes.some(t => t.id === selectedId)
+        ? selectedId
+        : fallbackId;
+}
+
+function renderColorOptions(selectedValue) {
+    if (!typeColorInput) return;
+    const value = selectedValue || customTypePalette[0];
+    applyTypeColor(value);
+}
+
+function syncPaletteActive(color) {
+    const buttons = document.querySelectorAll(".color-swatch");
+    buttons.forEach(btn => {
+        const swatch = btn.getAttribute("data-color");
+        if (swatch && swatch.toLowerCase() === String(color).toLowerCase()) {
+            btn.classList.add("is-active");
+        } else {
+            btn.classList.remove("is-active");
+        }
     });
-    typeSelect.value = selectedId || "school";
+}
+
+function applyTypeColor(color) {
+    if (!typeColorInput) return;
+    typeColorInput.value = color;
+    if (typeColorPreview) typeColorPreview.style.background = color;
+    syncPaletteActive(color);
+}
+
+function bindColorSwatches() {
+    const buttons = document.querySelectorAll(".color-swatch");
+    buttons.forEach(btn => {
+        if (btn.dataset.bound === "1") return;
+        btn.dataset.bound = "1";
+        btn.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const color = btn.getAttribute("data-color");
+            if (!color) return;
+            applyTypeColor(color);
+        });
+    });
+}
+
+function renderTypeList() {
+    if (!typeList) return;
+    const allTypes = getAllTypes();
+    typeList.innerHTML = "";
+    if (allTypes.length === 0) {
+        const empty = document.createElement("li");
+        empty.className = "type-item";
+        empty.textContent = "追加した種類はありません";
+        typeList.appendChild(empty);
+        return;
+    }
+    allTypes.forEach(t => {
+        const li = document.createElement("li");
+        li.className = "type-item";
+
+        const swatch = document.createElement("span");
+        swatch.className = "type-swatch";
+        swatch.style.background = t.color;
+
+        const name = document.createElement("span");
+        name.textContent = t.label;
+
+        const editBtn = document.createElement("button");
+        editBtn.type = "button";
+        editBtn.textContent = "編集";
+        editBtn.addEventListener("click", () => startEditType(t.id));
+
+        const deleteBtn = document.createElement("button");
+        deleteBtn.type = "button";
+        deleteBtn.textContent = "削除";
+        deleteBtn.addEventListener("click", () => deleteType(t.id));
+
+        li.appendChild(swatch);
+        li.appendChild(name);
+        li.appendChild(editBtn);
+        li.appendChild(deleteBtn);
+        typeList.appendChild(li);
+    });
+}
+
+function getStoredSession() {
+    try { return JSON.parse(localStorage.getItem("session") || "null"); }
+    catch { return null; }
+}
+
+function setStoredSession(session) {
+    localStorage.setItem("session", JSON.stringify(session));
+}
+
+function clearStoredSession() {
+    localStorage.removeItem("session");
+}
+
+function getStoredPlanForUser(userId) {
+    if (!userId) return null;
+    try {
+        const raw = JSON.parse(localStorage.getItem("plan") || "{}");
+        return raw[userId] || null;
+    } catch {
+        return null;
+    }
+}
+
+function setStoredPlanForUser(userId, plan) {
+    if (!userId) return;
+    const next = { userId, plan, updatedAt: new Date().toISOString() };
+    let raw = {};
+    try { raw = JSON.parse(localStorage.getItem("plan") || "{}"); }
+    catch { raw = {}; }
+    raw[userId] = next;
+    localStorage.setItem("plan", JSON.stringify(raw));
 }
 
 function updateSyncStatus() {
-    if (!currentUser) {
-        authStatus.textContent = "同期状態: 未ログイン";
+    if (!authState.isLoggedIn) {
+        authStatus.textContent = "未ログイン";
         if (syncRefreshBtn) syncRefreshBtn.style.display = "none";
         return;
     }
-    if (isProUser) {
-        authStatus.textContent = "同期状態: ログイン（Pro：同期中）";
+    if (authState.plan === "plus") {
+        authStatus.textContent = " ログイン（Plus：同期中）";
         if (syncRefreshBtn) syncRefreshBtn.style.display = "none";
         return;
     }
-    authStatus.textContent = "同期状態: ログイン（無料：ローカル保存）";
+    authStatus.textContent = "同期状態: ログイン（Free：ローカル保存）";
     if (syncRefreshBtn) syncRefreshBtn.style.display = "inline-block";
 }
 
-function setProState(nextIsPro) {
-    isProUser = !!nextIsPro;
+function applyAuthState({ isLoggedIn, user, plan }) {
+    authState.isLoggedIn = !!isLoggedIn;
+    authState.user = user || null;
+    authState.plan = plan || "free";
+    isProUser = authState.plan === "plus";
     syncEnabled = isProUser;
+    setAuthUI(authState.isLoggedIn, authState.plan);
     updateSyncStatus();
+    if (authLogoutBtn) authLogoutBtn.disabled = !(authState.isLoggedIn && authState.plan === "plus");
+}
+
+function initLocalSessionState() {
+    const session = getStoredSession();
+    if (session && session.userId) {
+        const storedPlan = getStoredPlanForUser(session.userId);
+        applyAuthState({
+            isLoggedIn: true,
+            user: { id: session.userId, email: session.email || "" },
+            plan: storedPlan && storedPlan.plan ? storedPlan.plan : "free"
+        });
+        return;
+    }
+    applyAuthState({ isLoggedIn: false, plan: "free", user: null });
 }
 
 function clearSyncMessage() {
@@ -162,6 +397,106 @@ function showSyncMessage(message, tone = "warning") {
     syncMessage.style.display = message ? "block" : "none";
 }
 
+function setInlineError(el, message) {
+    if (!el) return;
+    el.textContent = message || "";
+    el.style.display = message ? "block" : "none";
+}
+
+function setButtonLoading(button, isLoading, loadingLabel) {
+    if (!button) return;
+    if (isLoading) {
+        if (!button.dataset.originalText) button.dataset.originalText = button.textContent;
+        button.textContent = loadingLabel;
+        button.disabled = true;
+    } else {
+        button.textContent = button.dataset.originalText || button.textContent;
+        button.disabled = false;
+    }
+}
+
+function isValidEmail(email) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function normalizeEmail(email) {
+    return (email || "").trim().toLowerCase();
+}
+
+function loadLocalUsers() {
+    try { return JSON.parse(localStorage.getItem("users") || "[]"); }
+    catch { return []; }
+}
+
+function saveLocalUsers(users) {
+    localStorage.setItem("users", JSON.stringify(users));
+}
+
+function bufferToBase64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    bytes.forEach(b => { binary += String.fromCharCode(b); });
+    return btoa(binary);
+}
+
+function base64ToBuffer(base64) {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes.buffer;
+}
+
+async function hashPassword(password, saltBase64) {
+    const encoder = new TextEncoder();
+    const salt = base64ToBuffer(saltBase64);
+    const keyMaterial = await crypto.subtle.importKey(
+        "raw",
+        encoder.encode(password),
+        "PBKDF2",
+        false,
+        ["deriveBits"]
+    );
+    const bits = await crypto.subtle.deriveBits(
+        {
+            name: "PBKDF2",
+            hash: "SHA-256",
+            salt,
+            iterations: 120000
+        },
+        keyMaterial,
+        256
+    );
+    return bufferToBase64(bits);
+}
+
+function generateSalt() {
+    const saltBytes = new Uint8Array(16);
+    crypto.getRandomValues(saltBytes);
+    return bufferToBase64(saltBytes.buffer);
+}
+
+function mapAuthError(err, context) {
+    const code = (err && err.code) ? String(err.code) : "";
+    if (code === "local/email-already-in-use") return "このメールアドレスは既に登録されています。";
+    if (code === "local/user-not-found") return "このメールアドレスは登録されていません。";
+    if (code === "local/wrong-password") return "パスワードが正しくありません。";
+    if (code === "local/invalid-email") return "メール形式が不正です。";
+    if (code === "local/weak-password") return "パスワードは8文字以上にしてください。";
+    if (context === "signup") {
+        if (code === "auth/email-already-in-use") return "このメールアドレスは既に登録されています。";
+        if (code === "auth/invalid-email") return "メール形式が不正です。";
+        if (code === "auth/weak-password") return "パスワードが弱すぎます。8文字以上にしてください。";
+        if (code === "auth/too-many-requests") return "操作回数が多すぎます。時間を置いて再度お試しください。";
+        return "新規登録に失敗しました。時間を置いて再度お試しください。";
+    }
+    if (code === "auth/user-not-found") return "このメールアドレスは登録されていません。";
+    if (code === "auth/wrong-password") return "パスワードが正しくありません。";
+    if (code === "auth/invalid-credential") return "メールアドレスまたはパスワードが正しくありません。";
+    if (code === "auth/invalid-email") return "メール形式が不正です。";
+    if (code === "auth/too-many-requests") return "操作回数が多すぎます。時間を置いて再度お試しください。";
+    return "ログインに失敗しました。メールとパスワードをご確認ください。";
+}
+
 function isPermissionDeniedError(err) {
     const code = (err && err.code) ? String(err.code) : "";
     const msg = (err && err.message) ? String(err.message) : "";
@@ -174,9 +509,13 @@ function isPermissionDeniedError(err) {
 function handleSyncError(err) {
     console.warn("Sync failed", err);
     if (isPermissionDeniedError(err)) {
-        setProState(false);
-        showSyncMessage("同期はプレミアム限定です。端末内には保存されています。アップグレードはこちら。", "warning");
-        if (upgradeBtn) upgradeBtn.classList.add("attention");
+        syncEnabled = false;
+        if (authState.plan === "plus") {
+            showSyncMessage("同期に失敗しました。サーバー設定を確認してください。端末内には保存されています。", "warning");
+        } else {
+            showSyncMessage("同期はPlusプラン限定です。端末内には保存されています。", "warning");
+            if (upgradeBtn) upgradeBtn.classList.add("attention");
+        }
         return;
     }
     showSyncMessage("同期に失敗しました。通信環境を確認してください。端末内には保存されています。", "warning");
@@ -234,26 +573,84 @@ saveBtn.addEventListener("click", saveEvent);
 bulkOpenBtn.addEventListener("click", openBulkModal);
 bulkCancelBtn.addEventListener("click", closeBulkModal);
 bulkDeleteBtn.addEventListener("click", bulkDeleteSelected);
-authOpenBtn.addEventListener("click", openAuthModal);
+if (plusOpenBtn) plusOpenBtn.addEventListener("click", openPlusModal);
+if (authOpenBtn) authOpenBtn.addEventListener("click", openAuthModal);
 authCancelBtn.addEventListener("click", closeAuthModal);
-upgradeBtn.addEventListener("click", upgradeAccount);
+if (signupCancelBtn) signupCancelBtn.addEventListener("click", closeSignupModal);
+if (plusCloseBtn) plusCloseBtn.addEventListener("click", closePlusModal);
+if (plusChangeBtn) plusChangeBtn.addEventListener("click", () => startPlusUpgrade());
+if (plusLoginOpenBtn) plusLoginOpenBtn.addEventListener("click", () => {
+    pendingUpgrade = true;
+    closePlusModal();
+    openAuthModal();
+});
+if (paymentBackBtn) paymentBackBtn.addEventListener("click", () => {
+    closePaymentModal();
+    openPlusModal();
+});
+if (paymentSubmitBtn) paymentSubmitBtn.addEventListener("click", () => submitPaymentMock());
+if (signupSubmitBtn) signupSubmitBtn.addEventListener("click", () => emailPasswordSignup());
+upgradeBtn.addEventListener("click", () => {
+    closeAuthModal();
+    openPlusModal();
+});
 authLoginBtn.addEventListener("click", () => emailPasswordLogin());
 authLogoutBtn.addEventListener("click", () => logoutAccount());
+if (weekLabelBtn) weekLabelBtn.addEventListener("click", openDatePicker);
+if (datePickerModal) datePickerModal.addEventListener("click", (e) => {
+    if (e.target === datePickerModal) closeDatePicker();
+});
+if (datePickerSearch) datePickerSearch.addEventListener("click", jumpToSelectedDate);
+if (datePickerCalendarToggle) {
+    datePickerCalendarToggle.addEventListener("click", () => {
+        if (!datePickerCalendar) return;
+        datePickerCalendar.classList.toggle("open");
+        datePickerCalendar.setAttribute("aria-hidden", String(!datePickerCalendar.classList.contains("open")));
+        renderDatePickerCalendar();
+    });
+}
+if (datePickerYear) datePickerYear.addEventListener("change", updateDatePickerDays);
+if (datePickerMonth) datePickerMonth.addEventListener("change", updateDatePickerDays);
 if (syncRefreshBtn) {
-    syncRefreshBtn.addEventListener("click", () => refreshProStatus({ forceRefresh: true, announce: true }));
+    syncRefreshBtn.addEventListener("click", () => refreshPlanStatus({ forceRefresh: true, announce: true }));
 }
 typeAddBtn.addEventListener("click", addCustomType);
-typeAddOpenBtn.addEventListener("click", () => typeAddPanel.classList.add("open"));
+typeAddOpenBtn.addEventListener("click", () => {
+    typeAddPanel.classList.add("open");
+    renderColorOptions();
+    renderTypeList();
+    bindColorSwatches();
+});
 typeAddCloseBtn.addEventListener("click", () => typeAddPanel.classList.remove("open"));
+if (typeEditSaveBtn) typeEditSaveBtn.addEventListener("click", saveEditedType);
+if (typeEditCancelBtn) typeEditCancelBtn.addEventListener("click", clearTypeEdit);
 typeNewInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") addCustomType();
 });
 // Firebase初期化
 initFirebaseSync();
 renderTypeOptions();
-setAuthUI(false);
-setProState(false);
+renderColorOptions();
+renderTypeList();
+bindColorSwatches();
+applyAuthState({ isLoggedIn: false, plan: "free", user: null });
 clearSyncMessage();
+
+document.addEventListener("click", (e) => {
+    if (e.target && e.target.id === "typeColorFreeBtn" && typeColorInput) {
+        typeColorInput.click();
+    }
+});
+if (typeColorInput) {
+    typeColorInput.addEventListener("input", () => {
+        applyTypeColor(typeColorInput.value);
+    });
+}
+if (typeColorFreeBtn && typeColorInput) {
+    typeColorFreeBtn.addEventListener("click", () => {
+        typeColorInput.click();
+    });
+}
 
 function openModal(eventObj = null) {
     editingEvent = eventObj;
@@ -286,6 +683,137 @@ function openModal(eventObj = null) {
         deleteBtn.style.display = "none";
         deleteScopeRow.style.display = "none";
         deleteScopeSelect.value = "single";
+    }
+}
+
+function openDatePicker() {
+    if (!datePickerModal || !datePickerYear || !datePickerMonth || !datePickerDay) return;
+    const today = new Date();
+    setupDatePickerOptions(today);
+    if (datePickerCalendar) {
+        datePickerCalendar.classList.remove("open");
+        datePickerCalendar.setAttribute("aria-hidden", "true");
+    }
+    datePickerModal.style.display = "flex";
+}
+
+function closeDatePicker() {
+    if (!datePickerModal) return;
+    datePickerModal.style.display = "none";
+}
+
+function jumpToSelectedDate() {
+    const selected = getDatePickerValue();
+    if (!selected) return;
+    currentWeek = selected;
+    updateWeekView();
+    highlightCurrentDay();
+    closeDatePicker();
+}
+
+function setupDatePickerOptions(baseDate) {
+    const year = baseDate.getFullYear();
+    const month = baseDate.getMonth() + 1;
+    const day = baseDate.getDate();
+
+    datePickerYear.innerHTML = "";
+    for (let y = year - 5; y <= year + 5; y++) {
+        const opt = document.createElement("option");
+        opt.value = String(y);
+        opt.textContent = `${y}`;
+        datePickerYear.appendChild(opt);
+    }
+    datePickerYear.value = String(year);
+
+    datePickerMonth.innerHTML = "";
+    for (let m = 1; m <= 12; m++) {
+        const opt = document.createElement("option");
+        opt.value = String(m);
+        opt.textContent = `${m}`;
+        datePickerMonth.appendChild(opt);
+    }
+    datePickerMonth.value = String(month);
+
+    updateDatePickerDays(day);
+    renderDatePickerCalendar();
+}
+
+function updateDatePickerDays(preferredDay) {
+    if (!datePickerYear || !datePickerMonth || !datePickerDay) return;
+    const year = parseInt(datePickerYear.value, 10);
+    const month = parseInt(datePickerMonth.value, 10);
+    if (!year || !month) return;
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const current = preferredDay || parseInt(datePickerDay.value || "1", 10);
+
+    datePickerDay.innerHTML = "";
+    for (let d = 1; d <= daysInMonth; d++) {
+        const opt = document.createElement("option");
+        opt.value = String(d);
+        opt.textContent = `${d}`;
+        datePickerDay.appendChild(opt);
+    }
+    const safeDay = Math.min(current || 1, daysInMonth);
+    datePickerDay.value = String(safeDay);
+    renderDatePickerCalendar();
+}
+
+function getDatePickerValue() {
+    if (!datePickerYear || !datePickerMonth || !datePickerDay) return null;
+    const year = parseInt(datePickerYear.value, 10);
+    const month = parseInt(datePickerMonth.value, 10);
+    const day = parseInt(datePickerDay.value, 10);
+    if (!year || !month || !day) return null;
+    const date = new Date(year, month - 1, day);
+    return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function renderDatePickerCalendar() {
+    if (!datePickerCalendar || !datePickerYear || !datePickerMonth) return;
+    const year = parseInt(datePickerYear.value, 10);
+    const month = parseInt(datePickerMonth.value, 10);
+    if (!year || !month) return;
+
+    datePickerCalendar.innerHTML = "";
+    const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
+    weekdays.forEach(label => {
+        const el = document.createElement("div");
+        el.className = "date-picker-weekday";
+        el.textContent = label;
+        datePickerCalendar.appendChild(el);
+    });
+
+    const first = new Date(year, month - 1, 1);
+    const startDay = first.getDay();
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const today = new Date();
+    const isCurrentMonth = today.getFullYear() === year && (today.getMonth() + 1) === month;
+
+    for (let i = 0; i < startDay; i++) {
+        const blank = document.createElement("div");
+        blank.className = "date-picker-day is-muted";
+        blank.textContent = "";
+        datePickerCalendar.appendChild(blank);
+    }
+
+    for (let d = 1; d <= daysInMonth; d++) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "date-picker-day";
+        btn.textContent = String(d);
+        if (isCurrentMonth && d === today.getDate()) {
+            btn.classList.add("is-today");
+        }
+        btn.addEventListener("click", () => {
+            if (datePickerDay) datePickerDay.value = String(d);
+            const selected = getDatePickerValue();
+            if (!selected) return;
+            currentWeek = selected;
+            updateWeekView();
+            highlightCurrentDay();
+            closeDatePicker();
+        });
+        datePickerCalendar.appendChild(btn);
     }
 }
 
@@ -807,19 +1335,25 @@ function bulkDeleteSelected() {
     syncEventsToRemote();
 }
 
-async function refreshProStatus({ forceRefresh = false, announce = false } = {}) {
+async function refreshPlanStatus({ forceRefresh = false, announce = false } = {}) {
     if (!firebaseAuth || !firebaseAuth.currentUser) return;
     const user = firebaseAuth.currentUser;
     try {
         if (forceRefresh) await user.getIdToken(true);
-        const tokenResult = await user.getIdTokenResult();
-        const nextIsPro = !!(tokenResult && tokenResult.claims && tokenResult.claims.isPro === true);
-        setProState(nextIsPro);
-        if (nextIsPro) {
+        await user.getIdTokenResult();
+        const nextPlan = "plus";
+        setStoredPlanForUser(user.uid, "plus");
+        applyAuthState({
+            isLoggedIn: true,
+            user: { id: user.uid, email: user.email || "" },
+            plan: nextPlan
+        });
+        if (pendingUpgrade) closePlusModal();
+        if (nextPlan === "plus") {
             await hydrateFromRemote();
             if (announce) showSyncMessage("同期を有効化しました。", "success");
         } else if (announce) {
-            showSyncMessage("このアカウントは無料プランです。同期はローカル保存で利用できます。", "info");
+            showSyncMessage("このアカウントはFreeプランです。同期はローカル保存で利用できます。", "info");
         }
     } catch (err) {
         handleSyncError(err);
@@ -847,38 +1381,118 @@ async function initFirebaseSync() {
             currentUser = user;
             if (!user) {
                 currentUid = null;
-                setProState(false);
-                authLogoutBtn.disabled = true;
-                setAuthUI(false);
+                applyAuthState({ isLoggedIn: false, plan: "free", user: null });
                 clearSyncMessage();
                 return;
             }
             currentUid = user.uid;
-            authLogoutBtn.disabled = false;
-            setAuthUI(true);
-            await refreshProStatus({ forceRefresh: false, announce: false });
+            setStoredSession({
+                userId: user.uid,
+                email: user.email || "",
+                loggedInAt: new Date().toISOString()
+            });
+            await refreshPlanStatus({ forceRefresh: false, announce: false });
         });
     } catch (e) {
         console.error("Firebase init failed", e);
+        initLocalSessionState();
     }
 }
 
 function openAuthModal() {
     authModal.style.display = "flex";
+    setInlineError(authError, "");
 }
 
 function closeAuthModal() {
     authModal.style.display = "none";
+    setInlineError(authError, "");
+    pendingUpgrade = false;
 }
 
-function upgradeAccount() {
-    showSyncMessage("アップグレード後は「同期を有効化」を押してください。", "info");
-    if (upgradeBtn) upgradeBtn.classList.add("attention");
+function openSignupModal() {
+    if (!signupModal) return;
+    signupModal.style.display = "flex";
+    if (signupEmail) signupEmail.value = "";
+    if (signupPassword) signupPassword.value = "";
+    if (signupPasswordConfirm) signupPasswordConfirm.value = "";
+    if (signupTerms) signupTerms.checked = false;
+    setInlineError(signupError, "");
+}
+
+function closeSignupModal() {
+    if (!signupModal) return;
+    signupModal.style.display = "none";
+    setInlineError(signupError, "");
+    pendingUpgrade = false;
+}
+
+function openPlusModal() {
+    if (!plusModal) return;
+    plusModal.style.display = "flex";
+    setInlineError(plusError, "");
+}
+
+function closePlusModal() {
+    if (!plusModal) return;
+    plusModal.style.display = "none";
+    setInlineError(plusError, "");
+    pendingUpgrade = false;
+}
+
+function openPaymentModal() {
+    if (!paymentModal) return;
+    paymentModal.style.display = "flex";
+    setInlineError(paymentError, "");
+}
+
+function closePaymentModal() {
+    if (!paymentModal) return;
+    paymentModal.style.display = "none";
+    setInlineError(paymentError, "");
+    pendingUpgrade = false;
+}
+
+function startPlusUpgrade() {
+    setInlineError(plusError, "");
+    pendingUpgrade = true;
+    if (!authState.isLoggedIn) {
+        closePlusModal();
+        openSignupModal();
+        return;
+    }
+    closePlusModal();
+    openPaymentModal();
+}
+
+async function submitPaymentMock() {
+    setInlineError(paymentError, "");
+    const ok = window.confirm("Plusプラン（月額240円）に申し込みますか？");
+    if (!ok) {
+        setInlineError(paymentError, "支払いをキャンセルしました。");
+        return;
+    }
+    if (!authState.user) {
+        setInlineError(paymentError, "ログイン状態を確認できません。");
+        return;
+    }
+    // TODO: Stripe Checkout / Customer Portal をここで呼び出す
+    // NOTE: Netlify Functions 等のサーバー側処理が必要になります
+    setStoredPlanForUser(authState.user.id, "plus");
+    applyAuthState({ isLoggedIn: true, user: authState.user, plan: "plus" });
+    // TODO: ユーザー単位の保存キーに移行する場合はここで移行処理を行う
+    closePaymentModal();
+    closePlusModal();
+    closeSignupModal();
+    pendingUpgrade = false;
 }
 
 async function logoutAccount() {
     if (!firebaseAuth) {
-        showSyncMessage("認証の初期化に失敗しています。", "warning");
+        clearStoredSession();
+        applyAuthState({ isLoggedIn: false, plan: "free", user: null });
+        authLogoutBtn.disabled = true;
+        clearSyncMessage();
         return;
     }
     const { signOut } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
@@ -886,8 +1500,8 @@ async function logoutAccount() {
         await signOut(firebaseAuth);
         currentUser = null;
         currentUid = null;
-        setProState(false);
-        setAuthUI(false);
+        clearStoredSession();
+        applyAuthState({ isLoggedIn: false, plan: "free", user: null });
         authLogoutBtn.disabled = true;
         clearSyncMessage();
     } catch (err) {
@@ -899,7 +1513,7 @@ function addCustomType() {
     const label = (typeNewInput.value || "").trim();
     if (!label) return;
     const customTypes = loadCustomTypes();
-    const existing = customTypes.find(t => t.label === label);
+    const existing = getAllTypes().find(t => t.label === label);
     if (existing) {
         renderTypeOptions(existing.id);
         typeNewInput.value = "";
@@ -908,13 +1522,109 @@ function addCustomType() {
     const id = `custom-${Date.now()}`;
     const color = (typeColorInput && typeColorInput.value)
         ? typeColorInput.value
-        : customTypeColors[customTypes.length % customTypeColors.length];
+        : customTypePalette[customTypes.length % customTypePalette.length];
     customTypes.push({ id, label, color });
     saveCustomTypes(customTypes);
     renderTypeOptions(id);
+    renderTypeList();
     typeNewInput.value = "";
-    if (typeColorInput) typeColorInput.value = customTypeColors[customTypes.length % customTypeColors.length];
+    renderColorOptions();
 }
+
+function startEditType(id) {
+    const baseTypes = getBaseTypes();
+    const customTypes = loadCustomTypes();
+    const baseTarget = baseTypes.find(t => t.id === id);
+    const customTarget = customTypes.find(t => t.id === id);
+    const target = baseTarget || customTarget;
+    if (!target) return;
+    editingTypeId = id;
+    editingTypeIsBase = !!baseTarget;
+    typeNewInput.value = target.label;
+    renderColorOptions(target.color);
+    if (typeEditSaveBtn) typeEditSaveBtn.disabled = false;
+    if (typeEditCancelBtn) typeEditCancelBtn.disabled = false;
+}
+
+function saveEditedType() {
+    if (!editingTypeId) return;
+    const label = (typeNewInput.value || "").trim();
+    if (!label) return;
+    const color = (typeColorInput && typeColorInput.value) ? typeColorInput.value : customTypePalette[0];
+    const existsLabel = getAllTypes().find(t => t.label === label && t.id !== editingTypeId);
+    if (existsLabel) return;
+    if (editingTypeIsBase) {
+        const overrides = loadBaseTypeOverrides();
+        overrides[editingTypeId] = { label, color };
+        saveBaseTypeOverrides(overrides);
+    } else {
+        const customTypes = loadCustomTypes();
+        const updated = customTypes.map(t => {
+            if (t.id !== editingTypeId) return t;
+            return { ...t, label, color, deleted: false };
+        });
+        saveCustomTypes(updated);
+    }
+    renderTypeOptions(editingTypeId);
+    renderTypeList();
+    clearTypeEdit();
+    renderEvents();
+}
+
+function clearTypeEdit() {
+    editingTypeId = null;
+    editingTypeIsBase = false;
+    typeNewInput.value = "";
+    renderColorOptions();
+    if (typeEditSaveBtn) typeEditSaveBtn.disabled = true;
+    if (typeEditCancelBtn) typeEditCancelBtn.disabled = true;
+}
+
+function deleteType(id) {
+    const allTypes = getAllTypes();
+    const target = allTypes.find(t => t.id === id);
+    if (!target) return;
+    if (allTypes.length <= 1) return;
+    if (!confirm(`「${target.label}」を削除しますか？`)) return;
+    const isBase = baseEventTypes.some(t => t.id === id);
+
+    if (isBase) {
+        const deleted = new Set(loadDeletedBaseTypes());
+        deleted.add(id);
+        saveDeletedBaseTypes([...deleted]);
+        const overrides = loadBaseTypeOverrides();
+        if (overrides[id]) {
+            delete overrides[id];
+            saveBaseTypeOverrides(overrides);
+        }
+    } else {
+        const next = loadCustomTypes().map(t => {
+            if (t.id !== id) return t;
+            return { ...t, deleted: true };
+        });
+        saveCustomTypes(next);
+    }
+
+    renderTypeOptions();
+    renderTypeList();
+    clearTypeEdit();
+    renderEvents();
+}
+
+function replaceDeletedTypeInEvents(typeId, fallbackId) {
+    days.forEach((_, i) => {
+        const key = `events-day${i}`;
+        const events = JSON.parse(localStorage.getItem(key) || "[]");
+        let changed = false;
+        const updated = events.map(ev => {
+            if (ev.type !== typeId) return ev;
+            changed = true;
+            return { ...ev, type: fallbackId };
+        });
+        if (changed) localStorage.setItem(key, JSON.stringify(updated));
+    });
+}
+
 
 function collectAllLocalEvents() {
     const result = [];
@@ -1043,36 +1753,153 @@ async function syncTodosToRemote(targetDate) {
     }
 }
 
+async function localSignup(email, password) {
+    const normalized = normalizeEmail(email);
+    if (!isValidEmail(normalized)) throw { code: "local/invalid-email" };
+    if (password.length < 8) throw { code: "local/weak-password" };
+    const users = loadLocalUsers();
+    const exists = users.find(u => normalizeEmail(u.email) === normalized);
+    if (exists) throw { code: "local/email-already-in-use" };
+    const salt = generateSalt();
+    const passwordHash = await hashPassword(password, salt);
+    const user = {
+        id: `local-${Date.now()}`,
+        email: normalized,
+        passwordHash,
+        salt,
+        createdAt: new Date().toISOString()
+    };
+    users.push(user);
+    saveLocalUsers(users);
+    return { id: user.id, email: user.email };
+}
+
+async function localLogin(email, password) {
+    const normalized = normalizeEmail(email);
+    if (!isValidEmail(normalized)) throw { code: "local/invalid-email" };
+    const users = loadLocalUsers();
+    const user = users.find(u => normalizeEmail(u.email) === normalized);
+    if (!user) throw { code: "local/user-not-found" };
+    const passwordHash = await hashPassword(password, user.salt);
+    if (passwordHash !== user.passwordHash) throw { code: "local/wrong-password" };
+    return { id: user.id, email: user.email };
+}
+
 async function emailPasswordLogin() {
     if (!firebaseAuth) {
-        showSyncMessage("認証の初期化に失敗しています。", "warning");
+        try {
+            const email = (authEmail.value || "").trim();
+            const password = authPassword.value || "";
+            setInlineError(authError, "");
+            if (!email || !password) {
+                setInlineError(authError, "メールとパスワードを入力してください。");
+                return;
+            }
+            if (!isValidEmail(email)) {
+                setInlineError(authError, "メール形式が不正です。");
+                return;
+            }
+            setButtonLoading(authLoginBtn, true, "ログイン中…");
+            const localUser = await localLogin(email, password);
+            setStoredSession({ userId: localUser.id, email: localUser.email, loggedInAt: new Date().toISOString() });
+            setStoredPlanForUser(localUser.id, "plus");
+            applyAuthState({ isLoggedIn: true, user: localUser, plan: "plus" });
+            const shouldUpgrade = pendingUpgrade;
+            closeAuthModal();
+            if (shouldUpgrade) closePlusModal();
+        } catch (err) {
+            setInlineError(authError, mapAuthError(err, "login"));
+        } finally {
+            setButtonLoading(authLoginBtn, false, "ログイン");
+        }
         return;
     }
     const email = (authEmail.value || "").trim();
     const password = authPassword.value || "";
+    setInlineError(authError, "");
     if (!email || !password) {
-        showSyncMessage("メールとパスワードを入力してください。", "warning");
+        setInlineError(authError, "メールとパスワードを入力してください。");
+        return;
+    }
+    if (!isValidEmail(email)) {
+        setInlineError(authError, "メール形式が不正です。");
         return;
     }
     authStatus.textContent = "同期状態: ログイン処理中…";
-    const { signInWithEmailAndPassword, createUserWithEmailAndPassword } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+    setButtonLoading(authLoginBtn, true, "ログイン中…");
+    const { signInWithEmailAndPassword } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
     try {
         await signInWithEmailAndPassword(firebaseAuth, email, password);
+        const shouldUpgrade = pendingUpgrade;
         closeAuthModal();
+        if (shouldUpgrade) closePlusModal();
     } catch (err) {
-        if (err.code === "auth/user-not-found") {
-            // 初回は自動で作成
-            try {
-                await createUserWithEmailAndPassword(firebaseAuth, email, password);
-                closeAuthModal();
-            } catch (createErr) {
-                showSyncMessage("新規登録に失敗しました。時間を置いて再度お試しください。", "warning");
-                updateSyncStatus();
-            }
+        setInlineError(authError, mapAuthError(err, "login"));
+        updateSyncStatus();
+    } finally {
+        setButtonLoading(authLoginBtn, false, "ログイン");
+    }
+}
+
+async function emailPasswordSignup() {
+    const email = (signupEmail && signupEmail.value ? signupEmail.value : "").trim();
+    const password = signupPassword && signupPassword.value ? signupPassword.value : "";
+    const passwordConfirm = signupPasswordConfirm && signupPasswordConfirm.value ? signupPasswordConfirm.value : "";
+    const agreed = !!(signupTerms && signupTerms.checked);
+
+    setInlineError(signupError, "");
+    if (!email || !password || !passwordConfirm) {
+        setInlineError(signupError, "メールとパスワードを入力してください。");
+        return;
+    }
+    if (!isValidEmail(email)) {
+        setInlineError(signupError, "メール形式が不正です。");
+        return;
+    }
+    if (password.length < 8) {
+        setInlineError(signupError, "パスワードは8文字以上で入力してください。");
+        return;
+    }
+    if (password !== passwordConfirm) {
+        setInlineError(signupError, "パスワードが一致しません。");
+        return;
+    }
+    if (!agreed) {
+        setInlineError(signupError, "利用規約への同意が必要です。");
+        return;
+    }
+
+    setButtonLoading(signupSubmitBtn, true, "登録中…");
+    try {
+        if (!firebaseAuth) {
+            const localUser = await localSignup(email, password);
+            setStoredSession({ userId: localUser.id, email: localUser.email, loggedInAt: new Date().toISOString() });
+            setStoredPlanForUser(localUser.id, "plus");
+            applyAuthState({ isLoggedIn: true, user: localUser, plan: "plus" });
         } else {
-            showSyncMessage("ログインに失敗しました。メールとパスワードをご確認ください。", "warning");
-            updateSyncStatus();
+            const { createUserWithEmailAndPassword } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+            const result = await createUserWithEmailAndPassword(firebaseAuth, email, password);
+            if (result && result.user) {
+                const userInfo = { id: result.user.uid, email: result.user.email || email };
+                setStoredSession({
+                    userId: userInfo.id,
+                    email: userInfo.email,
+                    loggedInAt: new Date().toISOString()
+                });
+                setStoredPlanForUser(userInfo.id, "plus");
+                applyAuthState({
+                    isLoggedIn: true,
+                    user: userInfo,
+                    plan: "plus"
+                });
+            }
         }
+        closeSignupModal();
+        closePlusModal();
+    } catch (err) {
+        setInlineError(signupError, mapAuthError(err, "signup"));
+    } finally {
+        setButtonLoading(signupSubmitBtn, false, "登録");
     }
 }
 
@@ -1284,4 +2111,3 @@ highlightCurrentDay();
         });
     });
 })();
-

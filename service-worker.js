@@ -1,4 +1,4 @@
-ï»¿const CACHE_NAME = "app-shell-v1";
+const CACHE_NAME = "app-shell-v2";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -9,7 +9,7 @@ const APP_SHELL = [
   "/icons/icon-512.png"
 ];
 
-// ã‚¢ã‚»ãƒƒãƒˆåˆ¤å®šï¼ˆå¿…è¦ã«å¿œã˜ã¦æ‹¡å¼µã—ã¦OKï¼‰
+// ƒAƒZƒbƒg”»’èi•K—v‚É‰ž‚¶‚ÄŠg’£‚µ‚ÄOKj
 const ASSET_EXT = /\.(?:css|js|png|jpg|jpeg|svg|webp|ico|woff2?)$/i;
 
 self.addEventListener("install", (event) => {
@@ -32,7 +32,7 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
-  // SPAã®ãƒšãƒ¼ã‚¸é·ç§»ï¼ˆã‚¢ãƒ‰ãƒ¬ã‚¹ãƒãƒ¼æ›´æ–°/ãƒªãƒ­ãƒ¼ãƒ‰å«ã‚€ï¼‰ã¯ network-first
+  // SPA‚Ìƒy[ƒW‘JˆÚiƒAƒhƒŒƒXƒo[XV/ƒŠƒ[ƒhŠÜ‚Þj‚Í network-first
   if (event.request.mode === "navigate") {
     event.respondWith((async () => {
       try {
@@ -47,7 +47,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // ç”»åƒãƒ»CSSãƒ»JSãªã©ã®ã‚¢ã‚»ãƒƒãƒˆã¯ cache-first
+  // ‰æ‘œECSSEJS‚È‚Ç‚ÌƒAƒZƒbƒg‚Í cache-first
   if (ASSET_EXT.test(url.pathname)) {
     event.respondWith((async () => {
       const cached = await caches.match(event.request);
@@ -63,7 +63,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // ãã‚Œä»¥å¤–ï¼ˆå°†æ¥ã®APIç­‰ï¼‰ã¯ç´ é€šã—ï¼ˆã‚­ãƒ£ãƒƒã‚·ãƒ¥ã—ãªã„ï¼‰
+  // ‚»‚êˆÈŠOi«—ˆ‚ÌAPI“™j‚Í‘f’Ê‚µiƒLƒƒƒbƒVƒ…‚µ‚È‚¢j
 });
 
 self.addEventListener("message", (event) => {
