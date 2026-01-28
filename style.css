@@ -377,12 +377,26 @@
 }
 
 .type-color-palette {
-  display: grid;
-  grid-template-columns: repeat(6, 22px);
-  gap: 6px 8px;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
   margin-top: 8px;
-  align-items: center;
+  justify-content: flex-start;
+  max-width: 100%;
+  flex-wrap: nowrap;
 }
+
+.type-color-grid {
+  display: grid !important;
+  grid-template-columns: repeat(6, 22px);
+  grid-auto-rows: 22px;
+  grid-auto-flow: row;
+  gap: 6px 8px;
+  width: max-content;
+  height: 50px;
+}
+
+
 
 .color-swatch {
   width: 22px;
@@ -420,6 +434,7 @@
   width: 22px;
   height: 22px;
   overflow: hidden;
+  align-self: flex-end;
 }
 
 .color-free:hover {

@@ -1,5 +1,6 @@
 ﻿<!DOCTYPE html>
 <html lang="ja">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -16,6 +17,7 @@
   <meta name="mobile-web-app-capable" content="yes">
 
 </head>
+
 <body>
   <div class="week-navigation">
     <div class="auth-group">
@@ -61,22 +63,27 @@
           <span id="typeColorPreview" class="color-preview" aria-label="選択中の色"></span>
           <button id="typeAdd" type="button">追加</button>
         </div>
-        <div class="type-color-palette" aria-label="色のプリセット">
-          <button type="button" class="color-swatch" data-color="#123060" style="background:#123060" aria-label="色を選択"></button>
-          <button type="button" class="color-swatch" data-color="#5b8def" style="background:#5b8def" aria-label="色を選択"></button>
-          <button type="button" class="color-swatch" data-color="#0ea5e9" style="background:#0ea5e9" aria-label="色を選択"></button>
-          <button type="button" class="color-swatch" data-color="#7cc7ff" style="background:#7cc7ff" aria-label="色を選択"></button>
-          <button type="button" class="color-swatch" data-color="#10b981" style="background:#10b981" aria-label="色を選択"></button>
-          <button type="button" class="color-swatch" data-color="#f6c344" style="background:#f6c344" aria-label="色を選択"></button>
-          <button type="button" class="color-swatch" data-color="#d97706" style="background:#d97706" aria-label="色を選択"></button>
-          <button type="button" class="color-swatch" data-color="#ff8c00" style="background:#ff8c00" aria-label="色を選択"></button>
-          <button type="button" class="color-swatch" data-color="#ef4444" style="background:#ef4444" aria-label="色を選択"></button>
-          <button type="button" class="color-swatch" data-color="#8b5cf6" style="background:#8b5cf6" aria-label="色を選択"></button>
-          <button type="button" class="color-swatch" data-color="#8b5e3b" style="background:#8b5e3b" aria-label="色を選択"></button>
-          <button type="button" class="color-swatch" data-color="#333333" style="background:#333333" aria-label="色を選択"></button>
-          <button id="typeColorFreeBtn" type="button" class="color-free" aria-label="自由に色を選ぶ">
-            <img src="image/color-wheel.png" alt="" class="color-wheel-icon">
-          </button>
+        <div class="type-color-palette" aria-label="色のプリセット"
+          style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;">
+          <div class="type-color-grid"
+            style="display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;width:262px;">
+            <button type="button" class="color-swatch" data-color="#333333" style="background:#333333" aria-label="色を選択"></button>
+            <button type="button" class="color-swatch" data-color="#123060" style="background:#123060" aria-label="色を選択"></button>
+            <button type="button" class="color-swatch" data-color="#8b5cf6" style="background:#8b5cf6" aria-label="色を選択"></button>
+            <button type="button" class="color-swatch" data-color="#5b8def" style="background:#5b8def" aria-label="色を選択"></button>
+            <button type="button" class="color-swatch" data-color="#0ea5e9" style="background:#0ea5e9" aria-label="色を選択"></button>
+            <button type="button" class="color-swatch" data-color="#7cc7ff" style="background:#7cc7ff" aria-label="色を選択"></button>
+            <button type="button" class="color-swatch" data-color="#10b981" style="background:#10b981" aria-label="色を選択"></button>
+            <button type="button" class="color-swatch" data-color="#f6c344" style="background:#f6c344" aria-label="色を選択"></button>
+            <button type="button" class="color-swatch" data-color="#ff8c00" style="background:#ff8c00" aria-label="色を選択"></button>
+            <span class="palette-break" aria-hidden="true" style="flex-basis:100%;height:0;"></span>
+            <button type="button" class="color-swatch" data-color="#ef4444" style="background:#ef4444" aria-label="色を選択"></button>
+            <button type="button" class="color-swatch" data-color="#d97706" style="background:#d97706" aria-label="色を選択"></button>
+            <button type="button" class="color-swatch" data-color="#8b5e3b" style="background:#8b5e3b" aria-label="色を選択"></button>
+            <button id="typeColorFreeBtn" type="button" class="color-free" aria-label="自由に色を選ぶ">
+              <img src="image/color-wheel.png" alt="" class="color-wheel-icon">
+            </button>
+          </div>
         </div>
         <div class="type-edit-row">
           <button id="typeEditSave" type="button" disabled>変更を保存</button>
@@ -228,11 +235,12 @@
       <p class="plus-description">複数端末でもデータが自動で保持・同期されます。</p>
       <div class="plus-illustrations">
         <figure class="plus-illust">
-          <img id="plusPcImage"  src="image/usingcomputer_man_mono.png" alt="PCで計画するイメージ">
+          <img id="plusPcImage" src="image/usingcomputer_man_mono.png" alt="PCで計画するイメージ">
           <figcaption>PCで計画</figcaption>
         </figure>
         <figure class="plus-illust">
-          <img id="plusMobileImage" class="plus-illust-right" src="image/smartphone_woman_02_mono.png" alt="スマホでToDoを消化するイメージ">
+          <img id="plusMobileImage" class="plus-illust-right" src="image/smartphone_woman_02_mono.png"
+            alt="スマホでToDoを消化するイメージ">
           <figcaption>スマホでToDo消化</figcaption>
         </figure>
       </div>
@@ -297,4 +305,5 @@
     })();
   </script>
 </body>
+
 </html>
