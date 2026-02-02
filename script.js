@@ -48,16 +48,34 @@ const todoClose = document.getElementById("todoClose");
 const todoClearDone = document.getElementById("todoClearDone");
 const plusOpenBtn = document.getElementById("plusOpen");
 const authOpenBtn = document.getElementById("authOpen");
+const accountOpenBtn = document.getElementById("authAccount");
 const authModal = document.getElementById("authModal");
+const accountModal = document.getElementById("accountModal");
 const plusModal = document.getElementById("plusModal");
 const signupModal = document.getElementById("signupModal");
 const paymentModal = document.getElementById("paymentModal");
 const authCancelBtn = document.getElementById("authCancel");
+const accountCloseBtn = document.getElementById("accountClose");
 const plusCloseBtn = document.getElementById("plusClose");
 const signupCancelBtn = document.getElementById("signupCancel");
 const paymentBackBtn = document.getElementById("paymentBack");
 const upgradeBtn = document.getElementById("upgradeBtn");
-const authLogoutBtn = document.getElementById("authLogout");
+const accountLogoutBtn = document.getElementById("accountLogout");
+const accountCancelBtn = document.getElementById("accountCancel");
+const accountEmailToggleBtn = document.getElementById("accountEmailToggle");
+const accountPasswordToggleBtn = document.getElementById("accountPasswordToggle");
+const accountEmailFields = document.getElementById("accountEmailFields");
+const accountPasswordFields = document.getElementById("accountPasswordFields");
+const accountEmailCloseBtn = document.getElementById("accountEmailClose");
+const accountPasswordCloseBtn = document.getElementById("accountPasswordClose");
+const accountEmailInput = document.getElementById("accountEmail");
+const accountCurrentPasswordEmail = document.getElementById("accountCurrentPasswordEmail");
+const accountCurrentPassword = document.getElementById("accountCurrentPassword");
+const accountNewPassword = document.getElementById("accountNewPassword");
+const accountNewPasswordConfirm = document.getElementById("accountNewPasswordConfirm");
+const accountEmailUpdateBtn = document.getElementById("accountEmailUpdate");
+const accountPasswordUpdateBtn = document.getElementById("accountPasswordUpdate");
+const accountError = document.getElementById("accountError");
 const authEmail = document.getElementById("authEmail");
 const authPassword = document.getElementById("authPassword");
 const authLoginBtn = document.getElementById("authLogin");
@@ -88,8 +106,8 @@ const syncMessage = document.getElementById("syncMessage");
 function setAuthUI(isLoggedIn, plan) {
     const isPlus = plan === "plus";
     if (plusOpenBtn) plusOpenBtn.style.display = isPlus ? "none" : "inline-block";
-    if (authOpenBtn) authOpenBtn.style.display = isPlus ? "none" : "inline-block";
-    authLogoutBtn.style.display = isPlus ? "inline-block" : "none";
+    if (authOpenBtn) authOpenBtn.style.display = isLoggedIn ? "none" : "inline-block";
+    if (accountOpenBtn) accountOpenBtn.style.display = isLoggedIn ? "inline-block" : "none";
     if (!isLoggedIn && syncRefreshBtn) syncRefreshBtn.style.display = "none";
 }
 
@@ -365,7 +383,8 @@ function applyAuthState({ isLoggedIn, user, plan }) {
     syncEnabled = isProUser;
     setAuthUI(authState.isLoggedIn, authState.plan);
     updateSyncStatus();
-    if (authLogoutBtn) authLogoutBtn.disabled = !(authState.isLoggedIn && authState.plan === "plus");
+    if (accountOpenBtn) accountOpenBtn.disabled = !authState.isLoggedIn;
+    if (!authState.isLoggedIn && accountModal) closeAccountModal();
 }
 
 function initLocalSessionState() {
@@ -575,7 +594,20 @@ bulkCancelBtn.addEventListener("click", closeBulkModal);
 bulkDeleteBtn.addEventListener("click", bulkDeleteSelected);
 if (plusOpenBtn) plusOpenBtn.addEventListener("click", openPlusModal);
 if (authOpenBtn) authOpenBtn.addEventListener("click", openAuthModal);
-authCancelBtn.addEventListener("click", closeAuthModal);
+if (accountOpenBtn) accountOpenBtn.addEventListener("click", openAccountModal);
+if (accountCloseBtn) accountCloseBtn.addEventListener("click", closeAccountModal);
+if (accountLogoutBtn) accountLogoutBtn.addEventListener("click", () => {
+    logoutAccount();
+    closeAccountModal();
+});
+if (accountCancelBtn) accountCancelBtn.addEventListener("click", () => cancelSubscription());
+if (accountEmailToggleBtn) accountEmailToggleBtn.addEventListener("click", () => toggleAccountFields("email"));
+if (accountPasswordToggleBtn) accountPasswordToggleBtn.addEventListener("click", () => toggleAccountFields("password"));
+if (accountEmailCloseBtn) accountEmailCloseBtn.addEventListener("click", () => toggleAccountFields("email", false));
+if (accountPasswordCloseBtn) accountPasswordCloseBtn.addEventListener("click", () => toggleAccountFields("password", false));
+if (accountEmailUpdateBtn) accountEmailUpdateBtn.addEventListener("click", () => updateAccountEmail());
+if (accountPasswordUpdateBtn) accountPasswordUpdateBtn.addEventListener("click", () => updateAccountPassword());
+if (authCancelBtn) authCancelBtn.addEventListener("click", closeAuthModal);
 if (signupCancelBtn) signupCancelBtn.addEventListener("click", closeSignupModal);
 if (plusCloseBtn) plusCloseBtn.addEventListener("click", closePlusModal);
 if (plusChangeBtn) plusChangeBtn.addEventListener("click", () => startPlusUpgrade());
@@ -590,15 +622,17 @@ if (paymentBackBtn) paymentBackBtn.addEventListener("click", () => {
 });
 if (paymentSubmitBtn) paymentSubmitBtn.addEventListener("click", () => submitPaymentMock());
 if (signupSubmitBtn) signupSubmitBtn.addEventListener("click", () => emailPasswordSignup());
-upgradeBtn.addEventListener("click", () => {
+if (upgradeBtn) upgradeBtn.addEventListener("click", () => {
     closeAuthModal();
     openPlusModal();
 });
-authLoginBtn.addEventListener("click", () => emailPasswordLogin());
-authLogoutBtn.addEventListener("click", () => logoutAccount());
+if (authLoginBtn) authLoginBtn.addEventListener("click", () => emailPasswordLogin());
 if (weekLabelBtn) weekLabelBtn.addEventListener("click", openDatePicker);
 if (datePickerModal) datePickerModal.addEventListener("click", (e) => {
     if (e.target === datePickerModal) closeDatePicker();
+});
+if (accountModal) accountModal.addEventListener("click", (e) => {
+    if (e.target === accountModal) closeAccountModal();
 });
 if (datePickerSearch) datePickerSearch.addEventListener("click", jumpToSelectedDate);
 if (datePickerCalendarToggle) {
@@ -1410,6 +1444,47 @@ function closeAuthModal() {
     pendingUpgrade = false;
 }
 
+function openAccountModal() {
+    if (!accountModal) return;
+    if (!authState.isLoggedIn) return;
+    accountModal.style.display = "flex";
+    if (accountEmailFields) {
+        accountEmailFields.classList.remove("is-open");
+        accountEmailFields.setAttribute("aria-hidden", "true");
+    }
+    if (accountPasswordFields) {
+        accountPasswordFields.classList.remove("is-open");
+        accountPasswordFields.setAttribute("aria-hidden", "true");
+    }
+    if (accountEmailToggleBtn) accountEmailToggleBtn.setAttribute("aria-expanded", "false");
+    if (accountPasswordToggleBtn) accountPasswordToggleBtn.setAttribute("aria-expanded", "false");
+    if (accountEmailInput) {
+        accountEmailInput.value = authState.user && authState.user.email ? authState.user.email : "";
+    }
+    if (accountCurrentPasswordEmail) accountCurrentPasswordEmail.value = "";
+    if (accountCurrentPassword) accountCurrentPassword.value = "";
+    if (accountNewPassword) accountNewPassword.value = "";
+    if (accountNewPasswordConfirm) accountNewPasswordConfirm.value = "";
+    setInlineError(accountError, "");
+}
+
+function closeAccountModal() {
+    if (!accountModal) return;
+    accountModal.style.display = "none";
+    setInlineError(accountError, "");
+}
+
+function toggleAccountFields(target, nextState = null) {
+    const isEmail = target === "email";
+    const fields = isEmail ? accountEmailFields : accountPasswordFields;
+    const toggleBtn = isEmail ? accountEmailToggleBtn : accountPasswordToggleBtn;
+    if (!fields || !toggleBtn) return;
+    const willOpen = typeof nextState === "boolean" ? nextState : !fields.classList.contains("is-open");
+    fields.classList.toggle("is-open", willOpen);
+    fields.setAttribute("aria-hidden", String(!willOpen));
+    toggleBtn.setAttribute("aria-expanded", String(willOpen));
+}
+
 function openSignupModal() {
     if (!signupModal) return;
     signupModal.style.display = "flex";
@@ -1491,7 +1566,6 @@ async function logoutAccount() {
     if (!firebaseAuth) {
         clearStoredSession();
         applyAuthState({ isLoggedIn: false, plan: "free", user: null });
-        authLogoutBtn.disabled = true;
         clearSyncMessage();
         return;
     }
@@ -1502,11 +1576,138 @@ async function logoutAccount() {
         currentUid = null;
         clearStoredSession();
         applyAuthState({ isLoggedIn: false, plan: "free", user: null });
-        authLogoutBtn.disabled = true;
         clearSyncMessage();
     } catch (err) {
         showSyncMessage("ログアウトに失敗しました。時間を置いて再度お試しください。", "warning");
     }
+}
+
+async function updateAccountEmail() {
+    if (!authState.isLoggedIn || !authState.user) {
+        setInlineError(accountError, "ログイン状態を確認できません。");
+        return;
+    }
+    const nextEmail = (accountEmailInput && accountEmailInput.value ? accountEmailInput.value : "").trim();
+    const currentPassword = accountCurrentPasswordEmail && accountCurrentPasswordEmail.value ? accountCurrentPasswordEmail.value : "";
+    setInlineError(accountError, "");
+    if (!nextEmail || !currentPassword) {
+        setInlineError(accountError, "メールアドレスと現在のパスワードを入力してください。");
+        return;
+    }
+    if (!isValidEmail(nextEmail)) {
+        setInlineError(accountError, "メール形式が不正です。");
+        return;
+    }
+    if (!firebaseAuth || !firebaseAuth.currentUser) {
+        try {
+            await localLogin(authState.user.email || "", currentPassword);
+            const users = loadLocalUsers();
+            const normalized = normalizeEmail(nextEmail);
+            const exists = users.find(u => normalizeEmail(u.email) === normalized && u.id !== authState.user.id);
+            if (exists) {
+                setInlineError(accountError, "このメールアドレスは既に登録されています。");
+                return;
+            }
+            const updatedUsers = users.map(u => (
+                u.id === authState.user.id ? { ...u, email: normalized } : u
+            ));
+            saveLocalUsers(updatedUsers);
+            setStoredSession({
+                userId: authState.user.id,
+                email: normalized,
+                loggedInAt: new Date().toISOString()
+            });
+            applyAuthState({ isLoggedIn: true, user: { ...authState.user, email: normalized }, plan: authState.plan });
+            setInlineError(accountError, "メールアドレスを変更しました。");
+        } catch (err) {
+            setInlineError(accountError, mapAuthError(err, "signup"));
+        }
+        return;
+    }
+    try {
+        const { EmailAuthProvider, reauthenticateWithCredential, updateEmail } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+        const user = firebaseAuth.currentUser;
+        const credential = EmailAuthProvider.credential(user.email || "", currentPassword);
+        await reauthenticateWithCredential(user, credential);
+        await updateEmail(user, nextEmail);
+        setStoredSession({
+            userId: user.uid,
+            email: nextEmail,
+            loggedInAt: new Date().toISOString()
+        });
+        applyAuthState({ isLoggedIn: true, user: { id: user.uid, email: nextEmail }, plan: authState.plan });
+        setInlineError(accountError, "メールアドレスを変更しました。");
+    } catch (err) {
+        if (err && err.code === "auth/requires-recent-login") {
+            setInlineError(accountError, "再ログインが必要です。ログアウト後、再度お試しください。");
+            return;
+        }
+        setInlineError(accountError, mapAuthError(err, "signup"));
+    }
+}
+
+async function updateAccountPassword() {
+    if (!authState.isLoggedIn || !authState.user) {
+        setInlineError(accountError, "ログイン状態を確認できません。");
+        return;
+    }
+    const currentPassword = accountCurrentPassword && accountCurrentPassword.value ? accountCurrentPassword.value : "";
+    const nextPassword = accountNewPassword && accountNewPassword.value ? accountNewPassword.value : "";
+    const nextPasswordConfirm = accountNewPasswordConfirm && accountNewPasswordConfirm.value ? accountNewPasswordConfirm.value : "";
+    setInlineError(accountError, "");
+    if (!currentPassword || !nextPassword || !nextPasswordConfirm) {
+        setInlineError(accountError, "現在のパスワードと新しいパスワードを入力してください。");
+        return;
+    }
+    if (nextPassword.length < 8) {
+        setInlineError(accountError, "パスワードは8文字以上にしてください。");
+        return;
+    }
+    if (nextPassword !== nextPasswordConfirm) {
+        setInlineError(accountError, "新しいパスワードが一致しません。");
+        return;
+    }
+    if (!firebaseAuth || !firebaseAuth.currentUser) {
+        try {
+            await localLogin(authState.user.email || "", currentPassword);
+            const users = loadLocalUsers();
+            const salt = generateSalt();
+            const passwordHash = await hashPassword(nextPassword, salt);
+            const updatedUsers = users.map(u => (
+                u.id === authState.user.id ? { ...u, salt, passwordHash } : u
+            ));
+            saveLocalUsers(updatedUsers);
+            setInlineError(accountError, "パスワードを変更しました。");
+        } catch (err) {
+            setInlineError(accountError, mapAuthError(err, "login"));
+        }
+        return;
+    }
+    try {
+        const { EmailAuthProvider, reauthenticateWithCredential, updatePassword } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+        const user = firebaseAuth.currentUser;
+        const credential = EmailAuthProvider.credential(user.email || "", currentPassword);
+        await reauthenticateWithCredential(user, credential);
+        await updatePassword(user, nextPassword);
+        setInlineError(accountError, "パスワードを変更しました。");
+    } catch (err) {
+        if (err && err.code === "auth/requires-recent-login") {
+            setInlineError(accountError, "再ログインが必要です。ログアウト後、再度お試しください。");
+            return;
+        }
+        setInlineError(accountError, mapAuthError(err, "signup"));
+    }
+}
+
+function cancelSubscription() {
+    if (!authState.isLoggedIn || !authState.user) {
+        setInlineError(accountError, "ログイン状態を確認できません。");
+        return;
+    }
+    if (!confirm("解約しますか？同期は停止されます。")) return;
+    setStoredPlanForUser(authState.user.id, "free");
+    applyAuthState({ isLoggedIn: true, user: authState.user, plan: "free" });
+    setInlineError(accountError, "解約しました。同期は停止されます。");
 }
 
 function addCustomType() {

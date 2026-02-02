@@ -23,7 +23,7 @@
     <div class="auth-group">
       <button id="plusOpen" class="auth-plus">Plusプラン</button>
       <button id="authOpen" class="auth-open">ログイン</button>
-      <button id="authLogout" class="auth-logout" disabled>ログアウト</button>
+      <button id="authAccount" class="auth-logout" disabled>アカウント設定</button>
     </div>
     <div class="week-nav-controls">
       <button id="prevWeek">←</button>
@@ -224,6 +224,45 @@
       <div id="datePickerCalendar" class="date-picker-calendar" aria-hidden="true"></div>
       <div class="date-picker-actions">
         <button id="datePickerSearch" type="button">検索</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- アカウント設定モーダル -->
+  <div class="modal" id="accountModal">
+    <div class="modal-content auth-modal account-modal">
+      <h3>アカウント設定</h3>
+     
+        <div class="account-section">
+          <button id="accountEmailToggle" class="account-toggle" type="button" aria-expanded="false">メールアドレスを変更</button>
+          <div id="accountEmailFields" class="account-fields" aria-hidden="true">
+            <label for="accountEmail">新しいメールアドレス</label>
+            <input id="accountEmail" type="email" placeholder="example@sample.com">
+            <div class="account-actions">
+              <button id="accountEmailUpdate" type="button">変更を保存</button>
+              <button id="accountEmailClose" class="muted account-close" type="button">閉じる</button>
+            </div>
+          </div>
+        </div>
+        <div class="account-section">
+          <button id="accountPasswordToggle" class="account-toggle" type="button" aria-expanded="false">パスワードを変更</button>
+          <div id="accountPasswordFields" class="account-fields" aria-hidden="true">
+            <label for="accountCurrentPassword">現在のパスワード</label>
+            <input id="accountCurrentPassword" type="password" placeholder="現在のパスワード">
+            <label for="accountNewPassword">新しいパスワード</label>
+            <input id="accountNewPassword" type="password" placeholder="新しいパスワード">
+            <label for="accountNewPasswordConfirm">新しいパスワード（確認）</label>
+            <input id="accountNewPasswordConfirm" type="password" placeholder="新しいパスワード（確認）">
+            <div class="account-actions">
+              <button id="accountPasswordUpdate" type="button">変更を保存</button>
+              <button id="accountPasswordClose" class="muted account-close" type="button">閉じる</button>
+            </div>
+          </div>
+        </div>
+      <div id="accountError" class="auth-error" aria-live="polite"></div>
+      <div class="buttons auth-buttons">
+        <button id="accountLogout" class="account-toggle">ログアウト</button>
+        <button id="accountCancel" class="account-toggle">plusプランを停止</button>
       </div>
     </div>
   </div>
