@@ -238,6 +238,7 @@
           <div id="accountEmailFields" class="account-fields" aria-hidden="true">
             <label for="accountEmail">新しいメールアドレス</label>
             <input id="accountEmail" type="email" placeholder="example@sample.com">
+            <div id="accountEmailError" class="auth-error" aria-live="polite"></div>
             <div class="account-actions">
               <button id="accountEmailUpdate" type="button">変更を保存</button>
               <button id="accountEmailClose" class="muted account-close" type="button">閉じる</button>
@@ -253,6 +254,7 @@
             <input id="accountNewPassword" type="password" placeholder="新しいパスワード">
             <label for="accountNewPasswordConfirm">新しいパスワード（確認）</label>
             <input id="accountNewPasswordConfirm" type="password" placeholder="新しいパスワード（確認）">
+            <div id="accountPasswordError" class="auth-error" aria-live="polite"></div>
             <div class="account-actions">
               <button id="accountPasswordUpdate" type="button">変更を保存</button>
               <button id="accountPasswordClose" class="muted account-close" type="button">閉じる</button>

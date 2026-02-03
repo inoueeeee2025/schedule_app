@@ -69,12 +69,13 @@ const accountPasswordFields = document.getElementById("accountPasswordFields");
 const accountEmailCloseBtn = document.getElementById("accountEmailClose");
 const accountPasswordCloseBtn = document.getElementById("accountPasswordClose");
 const accountEmailInput = document.getElementById("accountEmail");
-const accountCurrentPasswordEmail = document.getElementById("accountCurrentPasswordEmail");
 const accountCurrentPassword = document.getElementById("accountCurrentPassword");
 const accountNewPassword = document.getElementById("accountNewPassword");
 const accountNewPasswordConfirm = document.getElementById("accountNewPasswordConfirm");
 const accountEmailUpdateBtn = document.getElementById("accountEmailUpdate");
 const accountPasswordUpdateBtn = document.getElementById("accountPasswordUpdate");
+const accountEmailError = document.getElementById("accountEmailError");
+const accountPasswordError = document.getElementById("accountPasswordError");
 const accountError = document.getElementById("accountError");
 const authEmail = document.getElementById("authEmail");
 const authPassword = document.getElementById("authPassword");
@@ -1461,16 +1462,19 @@ function openAccountModal() {
     if (accountEmailInput) {
         accountEmailInput.value = authState.user && authState.user.email ? authState.user.email : "";
     }
-    if (accountCurrentPasswordEmail) accountCurrentPasswordEmail.value = "";
     if (accountCurrentPassword) accountCurrentPassword.value = "";
     if (accountNewPassword) accountNewPassword.value = "";
     if (accountNewPasswordConfirm) accountNewPasswordConfirm.value = "";
+    setInlineError(accountEmailError, "");
+    setInlineError(accountPasswordError, "");
     setInlineError(accountError, "");
 }
 
 function closeAccountModal() {
     if (!accountModal) return;
     accountModal.style.display = "none";
+    setInlineError(accountEmailError, "");
+    setInlineError(accountPasswordError, "");
     setInlineError(accountError, "");
 }
 
@@ -1483,6 +1487,10 @@ function toggleAccountFields(target, nextState = null) {
     fields.classList.toggle("is-open", willOpen);
     fields.setAttribute("aria-hidden", String(!willOpen));
     toggleBtn.setAttribute("aria-expanded", String(willOpen));
+    if (!willOpen) {
+        if (isEmail) setInlineError(accountEmailError, "");
+        else setInlineError(accountPasswordError, "");
+    }
 }
 
 function openSignupModal() {
@@ -1584,28 +1592,26 @@ async function logoutAccount() {
 
 async function updateAccountEmail() {
     if (!authState.isLoggedIn || !authState.user) {
-        setInlineError(accountError, "ログイン状態を確認できません。");
+        setInlineError(accountEmailError, "ログイン状態を確認できません。");
         return;
     }
     const nextEmail = (accountEmailInput && accountEmailInput.value ? accountEmailInput.value : "").trim();
-    const currentPassword = accountCurrentPasswordEmail && accountCurrentPasswordEmail.value ? accountCurrentPasswordEmail.value : "";
-    setInlineError(accountError, "");
-    if (!nextEmail || !currentPassword) {
-        setInlineError(accountError, "メールアドレスと現在のパスワードを入力してください。");
+    setInlineError(accountEmailError, "");
+    if (!nextEmail) {
+        setInlineError(accountEmailError, "メールアドレスを入力してください。");
         return;
     }
     if (!isValidEmail(nextEmail)) {
-        setInlineError(accountError, "メール形式が不正です。");
+        setInlineError(accountEmailError, "メール形式が不正です。");
         return;
     }
     if (!firebaseAuth || !firebaseAuth.currentUser) {
         try {
-            await localLogin(authState.user.email || "", currentPassword);
             const users = loadLocalUsers();
             const normalized = normalizeEmail(nextEmail);
             const exists = users.find(u => normalizeEmail(u.email) === normalized && u.id !== authState.user.id);
             if (exists) {
-                setInlineError(accountError, "このメールアドレスは既に登録されています。");
+                setInlineError(accountEmailError, "このメールアドレスは既に登録されています。");
                 return;
             }
             const updatedUsers = users.map(u => (
@@ -1618,17 +1624,15 @@ async function updateAccountEmail() {
                 loggedInAt: new Date().toISOString()
             });
             applyAuthState({ isLoggedIn: true, user: { ...authState.user, email: normalized }, plan: authState.plan });
-            setInlineError(accountError, "メールアドレスを変更しました。");
+            setInlineError(accountEmailError, "メールアドレスを変更しました。");
         } catch (err) {
-            setInlineError(accountError, mapAuthError(err, "signup"));
+            setInlineError(accountEmailError, mapAuthError(err, "signup"));
         }
         return;
     }
     try {
-        const { EmailAuthProvider, reauthenticateWithCredential, updateEmail } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+        const { updateEmail } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
         const user = firebaseAuth.currentUser;
-        const credential = EmailAuthProvider.credential(user.email || "", currentPassword);
-        await reauthenticateWithCredential(user, credential);
         await updateEmail(user, nextEmail);
         setStoredSession({
             userId: user.uid,
@@ -1636,35 +1640,35 @@ async function updateAccountEmail() {
             loggedInAt: new Date().toISOString()
         });
         applyAuthState({ isLoggedIn: true, user: { id: user.uid, email: nextEmail }, plan: authState.plan });
-        setInlineError(accountError, "メールアドレスを変更しました。");
+        setInlineError(accountEmailError, "メールアドレスを変更しました。");
     } catch (err) {
         if (err && err.code === "auth/requires-recent-login") {
-            setInlineError(accountError, "再ログインが必要です。ログアウト後、再度お試しください。");
+            setInlineError(accountEmailError, "再ログインが必要です。ログアウト後、再度お試しください。");
             return;
         }
-        setInlineError(accountError, mapAuthError(err, "signup"));
+        setInlineError(accountEmailError, mapAuthError(err, "signup"));
     }
 }
 
 async function updateAccountPassword() {
     if (!authState.isLoggedIn || !authState.user) {
-        setInlineError(accountError, "ログイン状態を確認できません。");
+        setInlineError(accountPasswordError, "ログイン状態を確認できません。");
         return;
     }
     const currentPassword = accountCurrentPassword && accountCurrentPassword.value ? accountCurrentPassword.value : "";
     const nextPassword = accountNewPassword && accountNewPassword.value ? accountNewPassword.value : "";
     const nextPasswordConfirm = accountNewPasswordConfirm && accountNewPasswordConfirm.value ? accountNewPasswordConfirm.value : "";
-    setInlineError(accountError, "");
+    setInlineError(accountPasswordError, "");
     if (!currentPassword || !nextPassword || !nextPasswordConfirm) {
-        setInlineError(accountError, "現在のパスワードと新しいパスワードを入力してください。");
+        setInlineError(accountPasswordError, "現在のパスワードと新しいパスワードを入力してください。");
         return;
     }
     if (nextPassword.length < 8) {
-        setInlineError(accountError, "パスワードは8文字以上にしてください。");
+        setInlineError(accountPasswordError, "パスワードは8文字以上にしてください。");
         return;
     }
     if (nextPassword !== nextPasswordConfirm) {
-        setInlineError(accountError, "新しいパスワードが一致しません。");
+        setInlineError(accountPasswordError, "新しいパスワードが一致しません。");
         return;
     }
     if (!firebaseAuth || !firebaseAuth.currentUser) {
@@ -1677,9 +1681,9 @@ async function updateAccountPassword() {
                 u.id === authState.user.id ? { ...u, salt, passwordHash } : u
             ));
             saveLocalUsers(updatedUsers);
-            setInlineError(accountError, "パスワードを変更しました。");
+            setInlineError(accountPasswordError, "パスワードを変更しました。");
         } catch (err) {
-            setInlineError(accountError, mapAuthError(err, "login"));
+            setInlineError(accountPasswordError, mapAuthError(err, "login"));
         }
         return;
     }
@@ -1689,13 +1693,13 @@ async function updateAccountPassword() {
         const credential = EmailAuthProvider.credential(user.email || "", currentPassword);
         await reauthenticateWithCredential(user, credential);
         await updatePassword(user, nextPassword);
-        setInlineError(accountError, "パスワードを変更しました。");
+        setInlineError(accountPasswordError, "パスワードを変更しました。");
     } catch (err) {
         if (err && err.code === "auth/requires-recent-login") {
-            setInlineError(accountError, "再ログインが必要です。ログアウト後、再度お試しください。");
+            setInlineError(accountPasswordError, "再ログインが必要です。ログアウト後、再度お試しください。");
             return;
         }
-        setInlineError(accountError, mapAuthError(err, "signup"));
+        setInlineError(accountPasswordError, mapAuthError(err, "signup"));
     }
 }
 
