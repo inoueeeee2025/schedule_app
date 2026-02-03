@@ -1,4 +1,4 @@
-const CACHE_NAME = "app-shell-v3";
+const CACHE_NAME = "app-shell-v6";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -9,13 +9,22 @@ const APP_SHELL = [
   "/icons/icon-512.png"
 ];
 
-// ƒAƒZƒbƒg”»’èi•K—v‚É‰ž‚¶‚ÄŠg’£‚µ‚ÄOKj
+// ï¿½Aï¿½Zï¿½bï¿½gï¿½ï¿½ï¿½ï¿½iï¿½Kï¿½vï¿½É‰ï¿½ï¿½ï¿½ï¿½ÄŠgï¿½ï¿½ï¿½ï¿½ï¿½ï¿½OKï¿½j
 const ASSET_EXT = /\.(?:css|js|png|jpg|jpeg|svg|webp|ico|woff2?)$/i;
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    const results = await Promise.allSettled(APP_SHELL.map((u) => cache.add(u)));
+    results.forEach((result, i) => {
+      if (result.status === "rejected") {
+        console.warn("[sw] precache failed:", APP_SHELL[i], result.reason);
+      }
+    });
+  })());
   self.skipWaiting();
 });
+
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
@@ -32,38 +41,64 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
-  // SPA‚Ìƒy[ƒW‘JˆÚiƒAƒhƒŒƒXƒo[XV/ƒŠƒ[ƒhŠÜ‚Þj‚Í network-first
+  // SPAï¿½Ìƒyï¿½[ï¿½Wï¿½Jï¿½Úiï¿½Aï¿½hï¿½ï¿½ï¿½Xï¿½oï¿½[ï¿½Xï¿½V/ï¿½ï¿½ï¿½ï¿½ï¿½[ï¿½hï¿½Ü‚Þjï¿½ï¿½ network-first
   if (event.request.mode === "navigate") {
     event.respondWith((async () => {
       try {
         const fresh = await fetch(event.request);
-        const cache = await caches.open(CACHE_NAME);
-        cache.put("/index.html", fresh.clone());
+        if (fresh && fresh.ok) {
+          try {
+            const cache = await caches.open(CACHE_NAME);
+            await cache.put("/index.html", fresh.clone());
+          } catch (e) {
+            console.warn("[sw] cache.put index.html failed:", e);
+          }
+        }
         return fresh;
-      } catch {
-        return (await caches.match("/index.html")) || new Response("Offline", { status: 503 });
+      } catch (e) {
+        const cached = await caches.match("/index.html");
+        if (cached) return cached;
+        return new Response("Service Unavailable", {
+          status: 503,
+          statusText: "Service Unavailable",
+          headers: { "Content-Type": "text/plain; charset=utf-8" }
+        });
       }
     })());
     return;
   }
 
-  // ‰æ‘œECSSEJS‚È‚Ç‚ÌƒAƒZƒbƒg‚Í cache-first
-  if (ASSET_EXT.test(url.pathname)) {
+  const RUNTIME_CACHE_BYPASS = new Set([
+    "/script.js",
+    "/style.css",
+    "/manifest.json"
+  ]);
+
+  // ï¿½æ‘œï¿½ECSSï¿½EJSï¿½È‚Ç‚ÌƒAï¿½Zï¿½bï¿½gï¿½ï¿½ cache-first
+  if (ASSET_EXT.test(url.pathname) && !RUNTIME_CACHE_BYPASS.has(url.pathname)) {
     event.respondWith((async () => {
       const cached = await caches.match(event.request);
       if (cached) return cached;
 
       const res = await fetch(event.request);
-      if (res && res.ok) {
-        const cache = await caches.open(CACHE_NAME);
-        cache.put(event.request, res.clone());
+
+      // åŒä¸€ã‚ªãƒªã‚¸ãƒ³ã§æˆåŠŸã—ãŸã‚‚ã®ã ã‘ä¿å­˜
+      if (res && res.ok && res.type === "basic") {
+        try {
+          const cache = await caches.open(CACHE_NAME);
+          await cache.put(event.request, res.clone());
+        } catch (e) {
+          console.warn("[sw] cache.put failed:", url.pathname, e);
+        }
       }
       return res;
     })());
     return;
   }
 
-  // ‚»‚êˆÈŠOi«—ˆ‚ÌAPI“™j‚Í‘f’Ê‚µiƒLƒƒƒbƒVƒ…‚µ‚È‚¢j
+
+
+  // ï¿½ï¿½ï¿½ï¿½ÈŠOï¿½iï¿½ï¿½ï¿½ï¿½ï¿½ï¿½APIï¿½ï¿½ï¿½jï¿½Í‘fï¿½Ê‚ï¿½ï¿½iï¿½Lï¿½ï¿½ï¿½bï¿½Vï¿½ï¿½ï¿½ï¿½ï¿½È‚ï¿½ï¿½j
 });
 
 self.addEventListener("message", (event) => {

@@ -135,6 +135,8 @@ const firebaseConfig = {
 let firebaseApp = null;
 let firebaseAuth = null;
 let firestore = null;
+let firebaseInitPromise = null;
+let firebaseInitFailed = false;
 let currentUid = null;
 let currentUser = null;
 let isProUser = false;
@@ -596,95 +598,95 @@ bulkDeleteBtn.addEventListener("click", bulkDeleteSelected);
 if (plusOpenBtn) plusOpenBtn.addEventListener("click", openPlusModal);
 if (authOpenBtn) authOpenBtn.addEventListener("click", openAuthModal);
 if (accountOpenBtn) accountOpenBtn.addEventListener("click", openAccountModal);
-if (accountCloseBtn) accountCloseBtn.addEventListener("click", closeAccountModal);
-if (accountLogoutBtn) accountLogoutBtn.addEventListener("click", () => {
-    logoutAccount();
-    closeAccountModal();
-});
-if (accountCancelBtn) accountCancelBtn.addEventListener("click", () => cancelSubscription());
-if (accountEmailToggleBtn) accountEmailToggleBtn.addEventListener("click", () => toggleAccountFields("email"));
-if (accountPasswordToggleBtn) accountPasswordToggleBtn.addEventListener("click", () => toggleAccountFields("password"));
-if (accountEmailCloseBtn) accountEmailCloseBtn.addEventListener("click", () => toggleAccountFields("email", false));
-if (accountPasswordCloseBtn) accountPasswordCloseBtn.addEventListener("click", () => toggleAccountFields("password", false));
-if (accountEmailUpdateBtn) accountEmailUpdateBtn.addEventListener("click", () => updateAccountEmail());
-if (accountPasswordUpdateBtn) accountPasswordUpdateBtn.addEventListener("click", () => updateAccountPassword());
-if (authCancelBtn) authCancelBtn.addEventListener("click", closeAuthModal);
-if (signupCancelBtn) signupCancelBtn.addEventListener("click", closeSignupModal);
-if (plusCloseBtn) plusCloseBtn.addEventListener("click", closePlusModal);
-if (plusChangeBtn) plusChangeBtn.addEventListener("click", () => startPlusUpgrade());
-if (plusLoginOpenBtn) plusLoginOpenBtn.addEventListener("click", () => {
-    pendingUpgrade = true;
-    closePlusModal();
-    openAuthModal();
-});
-if (paymentBackBtn) paymentBackBtn.addEventListener("click", () => {
-    closePaymentModal();
-    openPlusModal();
-});
-if (paymentSubmitBtn) paymentSubmitBtn.addEventListener("click", () => submitPaymentMock());
-if (signupSubmitBtn) signupSubmitBtn.addEventListener("click", () => emailPasswordSignup());
-if (upgradeBtn) upgradeBtn.addEventListener("click", () => {
-    closeAuthModal();
-    openPlusModal();
-});
-if (authLoginBtn) authLoginBtn.addEventListener("click", () => emailPasswordLogin());
-if (weekLabelBtn) weekLabelBtn.addEventListener("click", openDatePicker);
-if (datePickerModal) datePickerModal.addEventListener("click", (e) => {
-    if (e.target === datePickerModal) closeDatePicker();
-});
-if (accountModal) accountModal.addEventListener("click", (e) => {
-    if (e.target === accountModal) closeAccountModal();
-});
-if (datePickerSearch) datePickerSearch.addEventListener("click", jumpToSelectedDate);
-if (datePickerCalendarToggle) {
-    datePickerCalendarToggle.addEventListener("click", () => {
-        if (!datePickerCalendar) return;
-        datePickerCalendar.classList.toggle("open");
-        datePickerCalendar.setAttribute("aria-hidden", String(!datePickerCalendar.classList.contains("open")));
-        renderDatePickerCalendar();
+function bindUIHandlers() {
+    if (accountCloseBtn) accountCloseBtn.addEventListener("click", closeAccountModal);
+    if (accountLogoutBtn) accountLogoutBtn.addEventListener("click", () => {
+        logoutAccount();
+        closeAccountModal();
     });
-}
-if (datePickerYear) datePickerYear.addEventListener("change", updateDatePickerDays);
-if (datePickerMonth) datePickerMonth.addEventListener("change", updateDatePickerDays);
-if (syncRefreshBtn) {
-    syncRefreshBtn.addEventListener("click", () => refreshPlanStatus({ forceRefresh: true, announce: true }));
-}
-typeAddBtn.addEventListener("click", addCustomType);
-typeAddOpenBtn.addEventListener("click", () => {
-    typeAddPanel.classList.add("open");
-    renderColorOptions();
-    renderTypeList();
-    bindColorSwatches();
-});
-typeAddCloseBtn.addEventListener("click", () => typeAddPanel.classList.remove("open"));
-if (typeEditSaveBtn) typeEditSaveBtn.addEventListener("click", saveEditedType);
-if (typeEditCancelBtn) typeEditCancelBtn.addEventListener("click", clearTypeEdit);
-typeNewInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") addCustomType();
-});
-// Firebase初期化
-initFirebaseSync();
-renderTypeOptions();
-renderColorOptions();
-renderTypeList();
-bindColorSwatches();
-applyAuthState({ isLoggedIn: false, plan: "free", user: null });
-clearSyncMessage();
-
-document.addEventListener("click", (e) => {
-    if (e.target && e.target.id === "typeColorFreeBtn" && typeColorInput) {
-        typeColorInput.click();
+    if (accountCancelBtn) accountCancelBtn.addEventListener("click", () => cancelSubscription());
+    if (accountEmailToggleBtn) accountEmailToggleBtn.addEventListener("click", () => toggleAccountFields("email"));
+    if (accountPasswordToggleBtn) accountPasswordToggleBtn.addEventListener("click", () => toggleAccountFields("password"));
+    if (accountEmailCloseBtn) accountEmailCloseBtn.addEventListener("click", () => toggleAccountFields("email", false));
+    if (accountPasswordCloseBtn) accountPasswordCloseBtn.addEventListener("click", () => toggleAccountFields("password", false));
+    if (accountEmailUpdateBtn) accountEmailUpdateBtn.addEventListener("click", () => updateAccountEmail());
+    if (accountPasswordUpdateBtn) accountPasswordUpdateBtn.addEventListener("click", () => updateAccountPassword());
+    if (authCancelBtn) authCancelBtn.addEventListener("click", closeAuthModal);
+    if (signupCancelBtn) signupCancelBtn.addEventListener("click", closeSignupModal);
+    if (plusCloseBtn) plusCloseBtn.addEventListener("click", closePlusModal);
+    if (plusChangeBtn) plusChangeBtn.addEventListener("click", () => startPlusUpgrade());
+    if (plusLoginOpenBtn) plusLoginOpenBtn.addEventListener("click", () => {
+        pendingUpgrade = true;
+        closePlusModal();
+        openAuthModal();
+    });
+    if (paymentBackBtn) paymentBackBtn.addEventListener("click", () => {
+        closePaymentModal();
+        openPlusModal();
+    });
+    if (paymentSubmitBtn) paymentSubmitBtn.addEventListener("click", () => submitPaymentMock());
+    if (signupSubmitBtn) signupSubmitBtn.addEventListener("click", () => emailPasswordSignup());
+    if (upgradeBtn) upgradeBtn.addEventListener("click", () => {
+        closeAuthModal();
+        openPlusModal();
+    });
+    if (authLoginBtn) authLoginBtn.addEventListener("click", () => {
+        console.log("[auth] login click", {
+            hasFirebaseAuth: !!firebaseAuth,
+            hasInitPromise: !!firebaseInitPromise,
+            initFailed: firebaseInitFailed
+        });
+        emailPasswordLogin();
+    });
+    if (weekLabelBtn) weekLabelBtn.addEventListener("click", openDatePicker);
+    if (datePickerModal) datePickerModal.addEventListener("click", (e) => {
+        if (e.target === datePickerModal) closeDatePicker();
+    });
+    if (accountModal) accountModal.addEventListener("click", (e) => {
+        if (e.target === accountModal) closeAccountModal();
+    });
+    if (datePickerSearch) datePickerSearch.addEventListener("click", jumpToSelectedDate);
+    if (datePickerCalendarToggle) {
+        datePickerCalendarToggle.addEventListener("click", () => {
+            if (!datePickerCalendar) return;
+            datePickerCalendar.classList.toggle("open");
+            datePickerCalendar.setAttribute("aria-hidden", String(!datePickerCalendar.classList.contains("open")));
+            renderDatePickerCalendar();
+        });
     }
-});
-if (typeColorInput) {
-    typeColorInput.addEventListener("input", () => {
-        applyTypeColor(typeColorInput.value);
+    if (datePickerYear) datePickerYear.addEventListener("change", updateDatePickerDays);
+    if (datePickerMonth) datePickerMonth.addEventListener("change", updateDatePickerDays);
+    if (syncRefreshBtn) {
+        syncRefreshBtn.addEventListener("click", () => refreshPlanStatus({ forceRefresh: true, announce: true }));
+    }
+    typeAddBtn.addEventListener("click", addCustomType);
+    typeAddOpenBtn.addEventListener("click", () => {
+        typeAddPanel.classList.add("open");
+        renderColorOptions();
+        renderTypeList();
+        bindColorSwatches();
     });
-}
-if (typeColorFreeBtn && typeColorInput) {
-    typeColorFreeBtn.addEventListener("click", () => {
-        typeColorInput.click();
+    typeAddCloseBtn.addEventListener("click", () => typeAddPanel.classList.remove("open"));
+    if (typeEditSaveBtn) typeEditSaveBtn.addEventListener("click", saveEditedType);
+    if (typeEditCancelBtn) typeEditCancelBtn.addEventListener("click", clearTypeEdit);
+    typeNewInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") addCustomType();
     });
+    document.addEventListener("click", (e) => {
+        if (e.target && e.target.id === "typeColorFreeBtn" && typeColorInput) {
+            typeColorInput.click();
+        }
+    });
+    if (typeColorInput) {
+        typeColorInput.addEventListener("input", () => {
+            applyTypeColor(typeColorInput.value);
+        });
+    }
+    if (typeColorFreeBtn && typeColorInput) {
+        typeColorFreeBtn.addEventListener("click", () => {
+            typeColorInput.click();
+        });
+    }
 }
 
 function openModal(eventObj = null) {
@@ -1397,41 +1399,58 @@ async function refreshPlanStatus({ forceRefresh = false, announce = false } = {}
 
 // ==================== Firebase同期 ====================
 async function initFirebaseSync() {
-    try {
-        const [{ initializeApp }] = await Promise.all([
-            import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js"),
-        ]);
-        const [{ getAuth, onAuthStateChanged }] = await Promise.all([
-            import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js"),
-        ]);
-        const [{ getFirestore }] = await Promise.all([
-            import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js"),
-        ]);
+    if (firebaseInitPromise) return firebaseInitPromise;
+    firebaseInitPromise = (async () => {
+        try {
+            const [{ initializeApp }] = await Promise.all([
+                import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js"),
+            ]);
+            const [{ getAuth, onAuthStateChanged }] = await Promise.all([
+                import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js"),
+            ]);
+            const [{ getFirestore }] = await Promise.all([
+                import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js"),
+            ]);
 
-        firebaseApp = initializeApp(firebaseConfig);
-        firebaseAuth = getAuth(firebaseApp);
-        firestore = getFirestore(firebaseApp);
+            firebaseApp = initializeApp(firebaseConfig);
+            firebaseAuth = getAuth(firebaseApp);
+            firestore = getFirestore(firebaseApp);
+            console.log("[auth] firebase init complete");
 
-        onAuthStateChanged(firebaseAuth, async (user) => {
-            currentUser = user;
-            if (!user) {
-                currentUid = null;
-                applyAuthState({ isLoggedIn: false, plan: "free", user: null });
-                clearSyncMessage();
-                return;
-            }
-            currentUid = user.uid;
-            setStoredSession({
-                userId: user.uid,
-                email: user.email || "",
-                loggedInAt: new Date().toISOString()
+            onAuthStateChanged(firebaseAuth, async (user) => {
+                currentUser = user;
+                if (!user) {
+                    currentUid = null;
+                    applyAuthState({ isLoggedIn: false, plan: "free", user: null });
+                    clearSyncMessage();
+                    return;
+                }
+                currentUid = user.uid;
+                setStoredSession({
+                    userId: user.uid,
+                    email: user.email || "",
+                    loggedInAt: new Date().toISOString()
+                });
+                await refreshPlanStatus({ forceRefresh: false, announce: false });
             });
-            await refreshPlanStatus({ forceRefresh: false, announce: false });
-        });
-    } catch (e) {
-        console.error("Firebase init failed", e);
-        initLocalSessionState();
+        } catch (e) {
+            firebaseInitFailed = true;
+            console.error("Firebase init failed", e);
+            initLocalSessionState();
+        }
+    })();
+    return firebaseInitPromise;
+}
+
+async function ensureFirebaseReady() {
+    if (firebaseAuth) return true;
+    if (firebaseInitFailed) return false;
+    if (firebaseInitPromise) {
+        await firebaseInitPromise;
+        return !!firebaseAuth && !firebaseInitFailed;
     }
+    await initFirebaseSync();
+    return !!firebaseAuth && !firebaseInitFailed;
 }
 
 function openAuthModal() {
@@ -1991,32 +2010,14 @@ async function localLogin(email, password) {
 }
 
 async function emailPasswordLogin() {
-    if (!firebaseAuth) {
-        try {
-            const email = (authEmail.value || "").trim();
-            const password = authPassword.value || "";
-            setInlineError(authError, "");
-            if (!email || !password) {
-                setInlineError(authError, "メールとパスワードを入力してください。");
-                return;
-            }
-            if (!isValidEmail(email)) {
-                setInlineError(authError, "メール形式が不正です。");
-                return;
-            }
-            setButtonLoading(authLoginBtn, true, "ログイン中…");
-            const localUser = await localLogin(email, password);
-            setStoredSession({ userId: localUser.id, email: localUser.email, loggedInAt: new Date().toISOString() });
-            setStoredPlanForUser(localUser.id, "plus");
-            applyAuthState({ isLoggedIn: true, user: localUser, plan: "plus" });
-            const shouldUpgrade = pendingUpgrade;
-            closeAuthModal();
-            if (shouldUpgrade) closePlusModal();
-        } catch (err) {
-            setInlineError(authError, mapAuthError(err, "login"));
-        } finally {
-            setButtonLoading(authLoginBtn, false, "ログイン");
-        }
+    const ready = await ensureFirebaseReady();
+    if (!ready || !firebaseAuth) {
+        setInlineError(
+            authError,
+            firebaseInitFailed
+                ? "認証の初期化に失敗しました。再読み込みしてください。"
+                : "認証の初期化中です。少し待ってから再度お試しください。"
+        );
         return;
     }
     const email = (authEmail.value || "").trim();
@@ -2047,6 +2048,16 @@ async function emailPasswordLogin() {
 }
 
 async function emailPasswordSignup() {
+    const ready = await ensureFirebaseReady();
+    if (!ready || !firebaseAuth) {
+        setInlineError(
+            signupError,
+            firebaseInitFailed
+                ? "認証の初期化に失敗しました。再読み込みしてください。"
+                : "認証の初期化中です。少し待ってから再度お試しください。"
+        );
+        return;
+    }
     const email = (signupEmail && signupEmail.value ? signupEmail.value : "").trim();
     const password = signupPassword && signupPassword.value ? signupPassword.value : "";
     const passwordConfirm = signupPasswordConfirm && signupPasswordConfirm.value ? signupPasswordConfirm.value : "";
@@ -2316,3 +2327,23 @@ highlightCurrentDay();
         });
     });
 })();
+
+document.addEventListener("DOMContentLoaded", async () => {
+    bindUIHandlers();
+    renderTypeOptions();
+    renderColorOptions();
+    renderTypeList();
+    bindColorSwatches();
+    applyAuthState({ isLoggedIn: false, plan: "free", user: null });
+    clearSyncMessage();
+
+    if (authLoginBtn) authLoginBtn.disabled = true;
+    if (signupSubmitBtn) signupSubmitBtn.disabled = true;
+
+    await initFirebaseSync();
+
+    if (!firebaseInitFailed) {
+        if (authLoginBtn) authLoginBtn.disabled = false;
+        if (signupSubmitBtn) signupSubmitBtn.disabled = false;
+    }
+});
