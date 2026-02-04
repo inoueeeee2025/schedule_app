@@ -8,6 +8,9 @@ const modal = document.getElementById("modal");
 const modalTitle = document.getElementById("modalTitle");
 const titleInput = document.getElementById("title");
 const typeSelect = document.getElementById("type");
+const typePickerBtn = document.getElementById("typePickerBtn");
+const typePickerPanel = document.getElementById("typePickerPanel");
+const typePickerList = document.getElementById("typePickerList");
 const typeNewInput = document.getElementById("typeNew");
 const typeAddBtn = document.getElementById("typeAdd");
 const typeAddOpenBtn = document.getElementById("typeAddOpen");
@@ -147,16 +150,10 @@ let editingEvent = null;
 let currentWeek = new Date();
 let pendingUpgrade = false;
 
-const baseEventTypes = [
-    { id: "school", label: "学校", color: "rgba(34, 34, 34, 0.75)" },
-    { id: "work", label: "バイト", color: "rgba(139, 94, 59, 0.8)" },
-    { id: "outing", label: "おでかけ", color: "rgba(246, 195, 68, 0.7)" },
-    { id: "circle", label: "サークル", color: "rgba(124, 199, 255, 0.75)" },
-    { id: "errand", label: "用事", color: "rgba(18, 48, 96, 0.75)" },
-    { id: "sports", label: "運動", color: "rgba(255, 140, 0, 0.75)" }
-];
+const baseEventTypes = [];
 const baseTypeOverridesKey = "base-event-type-overrides";
 const baseTypeDeletedKey = "base-event-type-deleted";
+const typeLabelCacheKey = "event-type-label-cache";
 const customTypePalette = [
     "#123060",
     "#5b8def",
@@ -174,14 +171,184 @@ const customTypePalette = [
 
 let editingTypeId = null;
 let editingTypeIsBase = false;
+let typePanelLastFocus = null;
+
+const seededTypeLabelCacheKey = "seeded-type-label-cache";
+const seededCustomTypesKey = "seeded-custom-types";
+
+function seedDefaultCustomTypesIfNeeded() {
+    const alreadySeeded = localStorage.getItem(seededCustomTypesKey) === "1";
+    const existing = loadCustomTypes();
+    if (alreadySeeded || existing.length) return;
+    const seed = [
+        { label: "学校", color: "rgba(34, 34, 34, 0.75)" },
+        { label: "バイト", color: "rgba(139, 94, 59, 0.8)" },
+        { label: "おでかけ", color: "rgba(246, 195, 68, 0.7)" },
+        { label: "サークル", color: "rgba(124, 199, 255, 0.75)" },
+        { label: "用事", color: "rgba(18, 48, 96, 0.75)" },
+        { label: "運動", color: "rgba(255, 140, 0, 0.75)" }
+    ].map((t, idx) => ({
+        id: `custom-seed-${idx}-${Date.now()}`,
+        label: t.label,
+        color: t.color
+    }));
+    saveCustomTypes(seed);
+    const cache = loadTypeLabelCache();
+    seed.forEach(t => {
+        cache[t.id] = { label: t.label, color: t.color };
+    });
+    saveTypeLabelCache(cache);
+    localStorage.setItem(seededCustomTypesKey, "1");
+}
+
+function migrateBaseTypesToCustomIfNeeded() {
+    const alreadyMigrated = localStorage.getItem(seededTypeLabelCacheKey) === "1";
+    if (alreadyMigrated) return;
+    const seed = [
+        { label: "学校", color: "rgba(34, 34, 34, 0.75)" },
+        { label: "バイト", color: "rgba(139, 94, 59, 0.8)" },
+        { label: "おでかけ", color: "rgba(246, 195, 68, 0.7)" },
+        { label: "サークル", color: "rgba(124, 199, 255, 0.75)" },
+        { label: "用事", color: "rgba(18, 48, 96, 0.75)" },
+        { label: "運動", color: "rgba(255, 140, 0, 0.75)" }
+    ];
+    const customTypes = loadCustomTypes();
+    const existingLabels = new Set(customTypes.map(t => t.label));
+    const next = [...customTypes];
+    seed.forEach((t, idx) => {
+        if (existingLabels.has(t.label)) return;
+        next.push({
+            id: `custom-seed-${idx}-${Date.now()}`,
+            label: t.label,
+            color: t.color
+        });
+    });
+    if (next.length !== customTypes.length) {
+        saveCustomTypes(next);
+        const cache = loadTypeLabelCache();
+        next.forEach(t => {
+            if (!cache[t.id]) cache[t.id] = { label: t.label, color: t.color };
+        });
+        saveTypeLabelCache(cache);
+    }
+    localStorage.setItem(seededTypeLabelCacheKey, "1");
+}
 
 function loadCustomTypes() {
-    try { return JSON.parse(localStorage.getItem("custom-event-types") || "[]"); }
-    catch { return []; }
+    try {
+        const raw = JSON.parse(localStorage.getItem("custom-event-types") || "[]");
+        if (!Array.isArray(raw)) return [];
+        return raw.map(t => {
+            if (!t || typeof t !== "object") return null;
+            const id = typeof t.id === "string" ? t.id : null;
+            if (!id) return null;
+            const label = typeof t.label === "string" && t.label.trim() ? t.label : id;
+            const color = typeof t.color === "string" && t.color ? t.color : customTypePalette[0];
+            return { id, label, color, deleted: !!t.deleted };
+        }).filter(Boolean);
+    } catch {
+        return [];
+    }
 }
 
 function saveCustomTypes(types) {
     localStorage.setItem("custom-event-types", JSON.stringify(types));
+}
+
+function loadTypeLabelCache() {
+    try {
+        const raw = JSON.parse(localStorage.getItem(typeLabelCacheKey) || "{}");
+        return raw && typeof raw === "object" ? raw : {};
+    } catch {
+        return {};
+    }
+}
+
+function saveTypeLabelCache(cache) {
+    localStorage.setItem(typeLabelCacheKey, JSON.stringify(cache));
+}
+
+function updateTypeLabelCache(typeId, label, color) {
+    if (!typeId || !label) return;
+    const cache = loadTypeLabelCache();
+    const next = { label, color: color || "" };
+    if (!cache[typeId] || cache[typeId].label !== next.label || cache[typeId].color !== next.color) {
+        cache[typeId] = next;
+        saveTypeLabelCache(cache);
+    }
+}
+
+function removeTypeLabelCache(typeId) {
+    if (!typeId) return;
+    const cache = loadTypeLabelCache();
+    if (cache[typeId]) {
+        delete cache[typeId];
+        saveTypeLabelCache(cache);
+    }
+}
+
+function syncTypeLabelCacheFromTypes() {
+    const cache = loadTypeLabelCache();
+    let changed = false;
+    getAllTypes().forEach(t => {
+        if (!cache[t.id] || cache[t.id].label !== t.label || cache[t.id].color !== t.color) {
+            cache[t.id] = { label: t.label, color: t.color || "" };
+            changed = true;
+        }
+    });
+    if (changed) saveTypeLabelCache(cache);
+}
+
+function syncTypeLabelCacheFromEvents() {
+    const cache = loadTypeLabelCache();
+    let changed = false;
+    const events = collectAllLocalEvents();
+    events.forEach(ev => {
+        if (!ev || !ev.type || !ev.typeLabel) return;
+        const color = ev.typeColor || cache[ev.type]?.color || "";
+        if (!cache[ev.type] || cache[ev.type].label !== ev.typeLabel || cache[ev.type].color !== color) {
+            cache[ev.type] = { label: ev.typeLabel, color };
+            changed = true;
+        }
+    });
+    if (changed) saveTypeLabelCache(cache);
+}
+
+function ensureCustomTypesFromCache() {
+    const cache = loadTypeLabelCache();
+    const customTypes = loadCustomTypes();
+    let changed = false;
+    Object.entries(cache).forEach(([id, meta]) => {
+        if (!id.startsWith("custom-")) return;
+        if (!meta || !meta.label) return;
+        if (customTypes.some(t => t.id === id)) return;
+        customTypes.push({
+            id,
+            label: meta.label,
+            color: meta.color || customTypePalette[0]
+        });
+        changed = true;
+    });
+    if (changed) saveCustomTypes(customTypes);
+}
+
+function rebuildCustomTypesFromEvents() {
+    const customTypes = loadCustomTypes();
+    const existingIds = new Set(customTypes.map(t => t.id));
+    let changed = false;
+    const events = collectAllLocalEvents();
+    const cache = loadTypeLabelCache();
+    events.forEach(ev => {
+        if (!ev || !ev.type || !String(ev.type).startsWith("custom-")) return;
+        if (existingIds.has(ev.type)) return;
+        const label = ev.typeLabel || cache[ev.type]?.label;
+        if (!label) return;
+        const color = ev.typeColor || cache[ev.type]?.color || customTypePalette[0];
+        customTypes.push({ id: ev.type, label, color });
+        existingIds.add(ev.type);
+        changed = true;
+    });
+    if (changed) saveCustomTypes(customTypes);
 }
 
 function getVisibleCustomTypes() {
@@ -222,7 +389,107 @@ function getAllTypes() {
     return [...getBaseTypes(), ...getVisibleCustomTypes()];
 }
 
-function renderTypeOptions(selectedId) {
+function resolveTypeMeta(typeId, preferLabel) {
+    if (!typeId) return null;
+    const base = getBaseTypes().find(t => t.id === typeId);
+    if (base) return base;
+    const custom = loadCustomTypes().find(t => t.id === typeId);
+    if (custom) return custom;
+    const cached = loadTypeLabelCache()[typeId];
+    const label = preferLabel || cached?.label || "";
+    const color = cached?.color || "";
+    return { id: typeId, label, color };
+}
+
+function setTypePickerOpen(nextState) {
+    if (!typePickerPanel || !typePickerBtn) return;
+    const willOpen = typeof nextState === "boolean"
+        ? nextState
+        : !typePickerPanel.classList.contains("open");
+    typePickerPanel.classList.toggle("open", willOpen);
+    typePickerPanel.setAttribute("aria-hidden", willOpen ? "false" : "true");
+    typePickerBtn.setAttribute("aria-expanded", willOpen ? "true" : "false");
+    if (willOpen) typePickerPanel.focus();
+}
+
+function applyTypePickerSelection(typeId) {
+    if (!typeSelect) return;
+    typeSelect.value = typeId;
+    typeSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    setTypePickerOpen(false);
+}
+
+function renderTypePicker(types, selectedId) {
+    if (!typePickerBtn || !typePickerList) return;
+    const list = typePickerList;
+    list.innerHTML = "";
+    if (!Array.isArray(types) || types.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "type-picker-item";
+        empty.textContent = "種類がありません";
+        empty.setAttribute("aria-disabled", "true");
+        list.appendChild(empty);
+        return;
+    }
+    const selectedType = types.find(t => t.id === selectedId) || resolveTypeMeta(selectedId) || types[0];
+    const swatch = typePickerBtn.querySelector(".type-picker-swatch");
+    const label = typePickerBtn.querySelector(".type-picker-label");
+    if (swatch) swatch.style.background = selectedType?.color || "#cbd5e1";
+    if (label) label.textContent = selectedType?.label || "種類を選択";
+
+    types.forEach(t => {
+        const item = document.createElement("button");
+        item.type = "button";
+        item.className = "type-picker-item";
+        const isSelected = selectedType && t.id === selectedType.id;
+        if (isSelected) item.classList.add("is-selected");
+        item.setAttribute("role", "option");
+        item.setAttribute("aria-selected", isSelected ? "true" : "false");
+        item.addEventListener("click", () => applyTypePickerSelection(t.id));
+
+        const itemSwatch = document.createElement("span");
+        itemSwatch.className = "type-picker-swatch";
+        itemSwatch.style.background = t.color;
+
+        const itemLabel = document.createElement("span");
+        itemLabel.textContent = t.label;
+
+        item.appendChild(itemSwatch);
+        item.appendChild(itemLabel);
+        const actions = document.createElement("span");
+        actions.className = "type-picker-actions";
+
+        const editBtn = document.createElement("button");
+        editBtn.type = "button";
+        editBtn.textContent = "編集";
+        editBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setTypePickerOpen(false);
+            setTypePanelOpen(true);
+            renderColorOptions(t.color);
+            renderTypeList();
+            bindColorSwatches();
+            startEditType(t.id);
+        });
+
+        const deleteBtn = document.createElement("button");
+        deleteBtn.type = "button";
+        deleteBtn.textContent = "削除";
+        deleteBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            deleteType(t.id);
+        });
+
+        actions.appendChild(editBtn);
+        actions.appendChild(deleteBtn);
+        item.appendChild(actions);
+        list.appendChild(item);
+    });
+}
+
+function renderTypeOptions(selectedId, selectedLabel) {
     if (!typeSelect) return;
     const allTypes = getAllTypes();
     typeSelect.innerHTML = "";
@@ -233,21 +500,23 @@ function renderTypeOptions(selectedId) {
         typeSelect.appendChild(opt);
     });
     if (selectedId && !allTypes.some(t => t.id === selectedId)) {
-        const baseFallback = baseEventTypes.find(t => t.id === selectedId);
-        const customFallback = loadCustomTypes().find(t => t.id === selectedId);
-        const label = baseFallback?.label || customFallback?.label || selectedId;
-        const opt = document.createElement("option");
-        opt.value = selectedId;
-        opt.textContent = label;
-        typeSelect.appendChild(opt);
-        typeSelect.value = selectedId;
-        return;
+        const fallback = resolveTypeMeta(selectedId, selectedLabel);
+        const label = fallback?.label || "";
+        if (label) {
+            const opt = document.createElement("option");
+            opt.value = selectedId;
+            opt.textContent = label;
+            typeSelect.appendChild(opt);
+            typeSelect.value = selectedId;
+            return;
+        }
     }
     if (allTypes.length === 0) return;
     const fallbackId = allTypes[0].id;
     typeSelect.value = selectedId && allTypes.some(t => t.id === selectedId)
         ? selectedId
         : fallbackId;
+    renderTypePicker(allTypes, typeSelect.value);
 }
 
 function renderColorOptions(selectedValue) {
@@ -589,7 +858,12 @@ days.forEach((day, i) => {
 });
 
 // ==================== モーダル操作 ====================
-cancelBtn.addEventListener("click", () => (modal.style.display = "none"));
+function closeMainModal() {
+    modal.style.display = "none";
+    setTypePanelOpen(false);
+}
+
+cancelBtn.addEventListener("click", closeMainModal);
 deleteBtn.addEventListener("click", deleteEvent);
 saveBtn.addEventListener("click", saveEvent);
 bulkOpenBtn.addEventListener("click", openBulkModal);
@@ -639,6 +913,24 @@ function bindUIHandlers() {
         emailPasswordLogin();
     });
     if (weekLabelBtn) weekLabelBtn.addEventListener("click", openDatePicker);
+    if (modal) modal.addEventListener("click", (e) => {
+        if (e.target === modal) closeMainModal();
+    });
+    if (bulkModal) bulkModal.addEventListener("click", (e) => {
+        if (e.target === bulkModal) closeBulkModal();
+    });
+    if (authModal) authModal.addEventListener("click", (e) => {
+        if (e.target === authModal) closeAuthModal();
+    });
+    if (plusModal) plusModal.addEventListener("click", (e) => {
+        if (e.target === plusModal) closePlusModal();
+    });
+    if (signupModal) signupModal.addEventListener("click", (e) => {
+        if (e.target === signupModal) closeSignupModal();
+    });
+    if (paymentModal) paymentModal.addEventListener("click", (e) => {
+        if (e.target === paymentModal) closePaymentModal();
+    });
     if (datePickerModal) datePickerModal.addEventListener("click", (e) => {
         if (e.target === datePickerModal) closeDatePicker();
     });
@@ -659,22 +951,42 @@ function bindUIHandlers() {
     if (syncRefreshBtn) {
         syncRefreshBtn.addEventListener("click", () => refreshPlanStatus({ forceRefresh: true, announce: true }));
     }
+    if (typePickerBtn) {
+        typePickerBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            setTypePickerOpen();
+        });
+    }
+    if (typeSelect) {
+        typeSelect.addEventListener("change", () => {
+            renderTypePicker(getAllTypes(), typeSelect.value);
+        });
+    }
     typeAddBtn.addEventListener("click", addCustomType);
     typeAddOpenBtn.addEventListener("click", () => {
-        typeAddPanel.classList.add("open");
+        setTypePanelOpen(true);
         renderColorOptions();
         renderTypeList();
         bindColorSwatches();
     });
-    typeAddCloseBtn.addEventListener("click", () => typeAddPanel.classList.remove("open"));
+    typeAddCloseBtn.addEventListener("click", () => setTypePanelOpen(false));
     if (typeEditSaveBtn) typeEditSaveBtn.addEventListener("click", saveEditedType);
     if (typeEditCancelBtn) typeEditCancelBtn.addEventListener("click", clearTypeEdit);
     typeNewInput.addEventListener("keydown", (e) => {
         if (e.key === "Enter") addCustomType();
     });
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") setTypePickerOpen(false);
+    });
     document.addEventListener("click", (e) => {
         if (e.target && e.target.id === "typeColorFreeBtn" && typeColorInput) {
             typeColorInput.click();
+        }
+        if (typePickerPanel && typePickerPanel.classList.contains("open")) {
+            const target = e.target;
+            const inPanel = typePickerPanel.contains(target);
+            const inButton = typePickerBtn && typePickerBtn.contains(target);
+            if (!inPanel && !inButton) setTypePickerOpen(false);
         }
     });
     if (typeColorInput) {
@@ -693,11 +1005,11 @@ function openModal(eventObj = null) {
     editingEvent = eventObj;
     modalTitle.textContent = eventObj ? "予定を編集" : "予定を追加";
     modal.style.display = "flex";
-    typeAddPanel.classList.remove("open");
+    setTypePanelOpen(false);
 
     if (eventObj) {
         titleInput.value = eventObj.title;
-        renderTypeOptions(eventObj.type);
+        renderTypeOptions(eventObj.type, eventObj.typeLabel);
         startInput.value = format(eventObj.start);
         endInput.value = format(eventObj.end);
         repeatSelect.value = eventObj.repeat || 'none';   // ← 追加
@@ -1145,6 +1457,11 @@ function saveEvent() {
 
     if (!title || start >= end) return;
 
+    const typeMeta = getAllTypes().find(t => t.id === type);
+    const typeLabel = typeMeta ? typeMeta.label : type;
+    const typeColor = typeMeta ? typeMeta.color : "";
+    updateTypeLabelCache(type, typeLabel, typeColor);
+
     const key = `events-day${selectedDay}`;
 
     const eventDate = new Date(currentWeek);
@@ -1162,6 +1479,8 @@ function saveEvent() {
         baseId,
         title,
         type,
+        typeLabel,
+        typeColor,
         start,
         end,
         day: selectedDay,
@@ -1210,8 +1529,10 @@ function saveEvent() {
     }
 
     modal.style.display = "none";
+    setTypePanelOpen(false);
     renderEvents();
     updateWeekView();
+    backfillEventTypeMeta();
     syncEventsToRemote();
 }
 
@@ -1262,6 +1583,7 @@ function deleteEvent() {
     const scope = deleteScopeSelect ? deleteScopeSelect.value : "future";
     deleteEventByScope(editingEvent, scope);
     modal.style.display = "none";
+    setTypePanelOpen(false);
     renderEvents();
     syncEventsToRemote();
 }
@@ -1440,6 +1762,31 @@ async function initFirebaseSync() {
         }
     })();
     return firebaseInitPromise;
+}
+
+function setTypePanelOpen(isOpen) {
+    if (!typeAddPanel) return;
+    if (isOpen) {
+        typePanelLastFocus = document.activeElement;
+        typeAddPanel.classList.add("open");
+        typeAddPanel.setAttribute("aria-hidden", "false");
+        if ("inert" in typeAddPanel) typeAddPanel.inert = false;
+        setTimeout(() => {
+            if (typeNewInput) typeNewInput.focus();
+        }, 0);
+        return;
+    }
+    const wasOpen = typeAddPanel.classList.contains("open");
+    typeAddPanel.classList.remove("open");
+    typeAddPanel.setAttribute("aria-hidden", "true");
+    if ("inert" in typeAddPanel) typeAddPanel.inert = true;
+    if (!wasOpen && !typePanelLastFocus) return;
+    const fallback = typeAddOpenBtn || modalTitle;
+    const target = typePanelLastFocus || fallback;
+    if (target && typeof target.focus === "function") {
+        setTimeout(() => target.focus(), 0);
+    }
+    typePanelLastFocus = null;
 }
 
 async function ensureFirebaseReady() {
@@ -1749,6 +2096,7 @@ function addCustomType() {
         : customTypePalette[customTypes.length % customTypePalette.length];
     customTypes.push({ id, label, color });
     saveCustomTypes(customTypes);
+    updateTypeLabelCache(id, label, color);
     renderTypeOptions(id);
     renderTypeList();
     typeNewInput.value = "";
@@ -1789,10 +2137,12 @@ function saveEditedType() {
         });
         saveCustomTypes(updated);
     }
+    updateTypeLabelCache(editingTypeId, label, color);
     renderTypeOptions(editingTypeId);
     renderTypeList();
     clearTypeEdit();
     renderEvents();
+    backfillEventTypeMeta();
 }
 
 function clearTypeEdit() {
@@ -1829,7 +2179,13 @@ function deleteType(id) {
         saveCustomTypes(next);
     }
 
-    renderTypeOptions();
+    removeTypeLabelCache(id);
+    const remainingTypes = getAllTypes();
+    const fallbackId = remainingTypes.length ? remainingTypes[0].id : null;
+    if (fallbackId) {
+        replaceDeletedTypeInEvents(id, fallbackId);
+    }
+    renderTypeOptions(fallbackId || undefined);
     renderTypeList();
     clearTypeEdit();
     renderEvents();
@@ -1843,7 +2199,29 @@ function replaceDeletedTypeInEvents(typeId, fallbackId) {
         const updated = events.map(ev => {
             if (ev.type !== typeId) return ev;
             changed = true;
-            return { ...ev, type: fallbackId };
+            return {
+                ...ev,
+                type: fallbackId,
+                typeLabel: undefined,
+                typeColor: undefined
+            };
+        });
+        if (changed) localStorage.setItem(key, JSON.stringify(updated));
+    });
+}
+
+function backfillEventTypeMeta() {
+    const typeMap = new Map(getAllTypes().map(t => [t.id, t]));
+    days.forEach((_, i) => {
+        const key = `events-day${i}`;
+        const events = JSON.parse(localStorage.getItem(key) || "[]");
+        let changed = false;
+        const updated = events.map(ev => {
+            const meta = typeMap.get(ev.type);
+            if (!meta) return ev;
+            if (ev.typeLabel === meta.label && ev.typeColor === meta.color) return ev;
+            changed = true;
+            return { ...ev, typeLabel: meta.label, typeColor: meta.color };
         });
         if (changed) localStorage.setItem(key, JSON.stringify(updated));
     });
@@ -2177,6 +2555,13 @@ function createEventElement(ev) {
     if (customType) {
         div.style.background = customType.color;
         div.style.color = isLightColor(customType.color) ? "#222" : "#fff";
+    } else if (ev.typeColor) {
+        div.style.background = ev.typeColor;
+        if (String(ev.typeColor).startsWith("#")) {
+            div.style.color = isLightColor(ev.typeColor) ? "#222" : "#fff";
+        } else {
+            div.style.color = "#fff";
+        }
     }
     div.draggable = true;
 
@@ -2275,6 +2660,11 @@ function generateRepeatDates(start, repeatType) {
 }
 
 // ==================== 初回描画 ====================
+syncTypeLabelCacheFromEvents();
+ensureCustomTypesFromCache();
+rebuildCustomTypesFromEvents();
+syncTypeLabelCacheFromTypes();
+backfillEventTypeMeta();
 renderEvents();
 updateWeekView();
 highlightCurrentDay();
@@ -2329,7 +2719,10 @@ highlightCurrentDay();
 })();
 
 document.addEventListener("DOMContentLoaded", async () => {
+    seedDefaultCustomTypesIfNeeded();
+    migrateBaseTypesToCustomIfNeeded();
     bindUIHandlers();
+    setTypePanelOpen(false);
     renderTypeOptions();
     renderColorOptions();
     renderTypeList();

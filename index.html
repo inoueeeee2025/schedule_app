@@ -53,7 +53,17 @@
       </label>
 
       <label>種類
-        <select id="type"></select>
+        <select id="type" class="type-select-hidden" aria-hidden="true" tabindex="-1"></select>
+        <div class="type-picker">
+          <button id="typePickerBtn" type="button" class="type-picker-btn" aria-haspopup="listbox" aria-expanded="false">
+            <span class="type-picker-swatch" aria-hidden="true"></span>
+            <span class="type-picker-label">種類を選択</span>
+            <span class="type-picker-arrow" aria-hidden="true">▾</span>
+          </button>
+          <div id="typePickerPanel" class="type-picker-panel" role="listbox" aria-hidden="true" tabindex="-1">
+            <div id="typePickerList" class="type-picker-list"></div>
+          </div>
+        </div>
       </label>
       <button id="typeAddOpen" type="button" class="type-add-open">種類を追加</button>
       <div id="typeAddPanel" class="type-add-panel">
@@ -76,7 +86,6 @@
             <button type="button" class="color-swatch" data-color="#10b981" style="background:#10b981" aria-label="色を選択"></button>
             <button type="button" class="color-swatch" data-color="#f6c344" style="background:#f6c344" aria-label="色を選択"></button>
             <button type="button" class="color-swatch" data-color="#ff8c00" style="background:#ff8c00" aria-label="色を選択"></button>
-            <span class="palette-break" aria-hidden="true" style="flex-basis:100%;height:0;"></span>
             <button type="button" class="color-swatch" data-color="#ef4444" style="background:#ef4444" aria-label="色を選択"></button>
             <button type="button" class="color-swatch" data-color="#d97706" style="background:#d97706" aria-label="色を選択"></button>
             <button type="button" class="color-swatch" data-color="#8b5e3b" style="background:#8b5e3b" aria-label="色を選択"></button>
@@ -85,11 +94,6 @@
             </button>
           </div>
         </div>
-        <div class="type-edit-row">
-          <button id="typeEditSave" type="button" disabled>変更を保存</button>
-          <button id="typeEditCancel" type="button" disabled>編集を解除</button>
-        </div>
-        <ul id="typeList" class="type-list"></ul>
         <label class="tap-toggle-row">
           <span>完了／未完了を切り替え</span>
           <span class="toggle-switch">
