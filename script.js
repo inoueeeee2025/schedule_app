@@ -1179,15 +1179,32 @@ function format(t) {
     return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
+function getWeekStart(baseDate) {
+    const weekStart = new Date(baseDate);
+    const day = weekStart.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    weekStart.setDate(weekStart.getDate() + diff);
+    weekStart.setHours(0, 0, 0, 0);
+    return weekStart;
+}
+
+function getWeekDate(baseDate, dayIndex) {
+    const date = getWeekStart(baseDate);
+    date.setDate(date.getDate() + dayIndex);
+    return date;
+}
+
+function getMondayBasedDayIndex(date) {
+    return date.getDay() === 0 ? 6 : date.getDay() - 1;
+}
+
 // ==================== 今日をハイライト ====================
 function highlightCurrentDay() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     // 現在表示している週の月曜～日曜を計算
-    const weekStart = new Date(currentWeek);
-    weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1);
-    weekStart.setHours(0, 0, 0, 0);
+    const weekStart = getWeekStart(currentWeek);
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekStart.getDate() + 6);
     weekEnd.setHours(23, 59, 59, 999);
@@ -1197,7 +1214,7 @@ function highlightCurrentDay() {
 
     // 今日が今の週に含まれていればその曜日を黄色に
     if (today >= weekStart && today <= weekEnd) {
-        const dayIndex = today.getDay() === 0 ? 6 : today.getDay() - 1;
+        const dayIndex = getMondayBasedDayIndex(today);
         const header = document.querySelectorAll(".day-header")[dayIndex];
         if (header) header.classList.add("current-day");
     }
@@ -1222,14 +1239,11 @@ function updateWeekView() {
     weekLabel.textContent = `${year}年${month}月第${weekNum}週`;
 
     // 今週の月曜から日曜の日付を計算
-    const weekStart = new Date(currentWeek);
-    weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1);
-    weekStart.setHours(0, 0, 0, 0);
+    const weekStart = getWeekStart(currentWeek);
 
     // 曜日ヘッダーに実日付を埋め込み & クリックでToDoを開く
     document.querySelectorAll(".day-header").forEach((header, i) => {
-        const date = new Date(weekStart);
-        date.setDate(weekStart.getDate() + i);
+        const date = getWeekDate(weekStart, i);
         const label = toJPLabel(date);
         header.textContent = label;
         header.dataset.date = toISODate(date); // ← この日付キーでToDo保存
@@ -1462,10 +1476,10 @@ function saveEvent() {
     const typeColor = typeMeta ? typeMeta.color : "";
     updateTypeLabelCache(type, typeLabel, typeColor);
 
-    const key = `events-day${selectedDay}`;
+    if (!Number.isInteger(selectedDay) || selectedDay < 0 || selectedDay >= days.length) return;
 
-    const eventDate = new Date(currentWeek);
-    eventDate.setDate(eventDate.getDate() - eventDate.getDay() + selectedDay + 1);
+    const key = `events-day${selectedDay}`;
+    const eventDate = getWeekDate(currentWeek, selectedDay);
 
     // 編集時は基準日以降だけを更新するためのしきい値
     const changeStartDate = editingEvent && editingEvent.date
@@ -1515,7 +1529,7 @@ function saveEvent() {
     if (repeat !== 'none') {
         const repeatDates = generateRepeatDates(eventDate, repeat);
         repeatDates.forEach(date => {
-            const dayIndex = (date.getDay() + 6) % 7; // 月曜=0
+            const dayIndex = getMondayBasedDayIndex(date);
             const repeatKey = `events-day${dayIndex}`;
             const repeatEvents = JSON.parse(localStorage.getItem(repeatKey) || "[]");
             repeatEvents.push({
@@ -1591,9 +1605,7 @@ function deleteEvent() {
 // ==================== 一括削除 ====================
 function collectWeekEvents() {
     const result = [];
-    const weekStart = new Date(currentWeek);
-    weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1);
-    weekStart.setHours(0, 0, 0, 0);
+    const weekStart = getWeekStart(currentWeek);
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekStart.getDate() + 6);
     weekEnd.setHours(23, 59, 59, 999);
@@ -2501,9 +2513,7 @@ async function emailPasswordSignup() {
 function renderEvents() {
     document.querySelectorAll(".event").forEach(e => e.remove());
 
-    const weekStart = new Date(currentWeek);
-    weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1);
-    weekStart.setHours(0, 0, 0, 0);
+    const weekStart = getWeekStart(currentWeek);
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekStart.getDate() + 6);
     weekEnd.setHours(23, 59, 59, 999);
