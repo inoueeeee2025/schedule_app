@@ -1,4 +1,157 @@
-﻿const days = ["月", "火", "水", "木", "金", "土", "日"];
+﻿import {
+    format,
+    getMondayBasedDayIndex,
+    getWeekDate,
+    getWeekStart,
+    parseTime,
+    readJSON,
+    readText,
+    toISODate,
+    toJPLabel,
+    writeJSON,
+    writeText
+} from "./legacy-utils.js";
+import {
+    baseEventTypes,
+    customTypePalette,
+    getAllTypes,
+    getBaseTypes,
+    getCustomTypeById,
+    getVisibleCustomTypes,
+    loadBaseTypeOverrides,
+    loadCustomTypes,
+    loadDeletedBaseTypes,
+    loadTypeLabelCache,
+    rebuildCustomTypesFromEvents,
+    removeTypeLabelCache,
+    resolveTypeMeta,
+    saveBaseTypeOverrides,
+    saveCustomTypes,
+    saveDeletedBaseTypes,
+    saveTypeLabelCache,
+    syncTypeLabelCacheFromEvents,
+    syncTypeLabelCacheFromTypes,
+    typeLabelCacheKey,
+    updateTypeLabelCache,
+    ensureCustomTypesFromCache
+} from "./legacy-type-store.js";
+import {
+    addTodoItem,
+    clearCompletedTodoItems,
+    deleteTodoItem,
+    editTodoItem,
+    loadTodoMemo,
+    loadTodos,
+    saveTodoMemo,
+    saveTodos,
+    toggleTodoItem,
+    todoKey,
+    todoMemoKey
+} from "./legacy-todo-store.js";
+import {
+    createAndStoreLocalUser,
+    clearStoredSession,
+    findLocalUserByEmail,
+    getLocalAuthUser,
+    getStoredPlanForUser,
+    getStoredSession,
+    loadLocalUsers,
+    saveLocalUsers,
+    setStoredPlanForUser,
+    setStoredSession,
+    updateLocalUserById,
+    verifyLocalUserCredentials
+} from "./legacy-auth-store.js";
+import {
+    getAccountFieldState,
+    getAccountModalFormState,
+    getAccountUpdateSuccessMessage,
+    getAuthReadyErrorMessage,
+    getAuthSuccessCloseState,
+    getModalDisplayState,
+    getRequiresRecentLoginMessage,
+    getSignupModalFormState,
+    getInlineErrorState,
+    getNextAuthState,
+    getSyncMessageState,
+    getSyncStatusText,
+    getUpgradeFlowTarget,
+    isPermissionDeniedError,
+    mapAuthErrorMessage,
+    validateAccountEmailForm,
+    validateAccountPasswordForm,
+    validateLoginForm,
+    validateSignupForm
+} from "./legacy-auth-view.js";
+import {
+    backfillEventTypeMeta as backfillStoredEventTypeMeta,
+    collectWeekEvents as collectStoredWeekEvents,
+    collectAllLocalEvents as collectStoredEvents,
+    deleteEventByScope as deleteStoredEventByScope,
+    generateRepeatDates,
+    loadEventsForDay,
+    moveEventToDay,
+    resetLocalEvents as resetStoredEvents,
+    saveEventSeries,
+    saveEventsForDay
+} from "./legacy-event-store.js";
+import {
+    buildMovedEvent,
+    buildBulkEventLabel,
+    buildDatePickerCalendarModel,
+    buildDatePickerDays,
+    buildDatePickerMonths,
+    buildDatePickerYears,
+    buildEventLabel,
+    buildTimelineHourMarks,
+    buildWeekHeaderItems,
+    buildWeekLabel,
+    collectBulkDeleteTargets,
+    getEventColorStyle,
+    getEventCompletionState,
+    getEventPositionStyle,
+    getTimelineCreateEventState,
+    getTimelineHeight,
+    getSafeDatePickerDay,
+    getCurrentDayHeaderIndex,
+    getWeekRange,
+    groupEventsByDay,
+    parseDraggedEvent,
+    serializeDraggedEvent,
+    shouldIgnoreEventClick,
+    sortEventsByDateTime
+} from "./legacy-event-view.js";
+import {
+    buildEventDraft,
+    getClosedEventModalState,
+    getEventModalState,
+    getOpenedEventModalState
+} from "./legacy-event-modal.js";
+import { buildTodoPanelLabel, getMemoButtonLabel } from "./legacy-todo-view.js";
+import {
+    buildNewTypeDraft,
+    buildTypeListItems,
+    findSelectedType,
+    findExistingTypeByLabel,
+    getDefaultTypeColor,
+    getTypeSelectState,
+    normalizeTypeLabel,
+    resolveTypeEditTarget
+} from "./legacy-type-view.js";
+import {
+    applyPlusActivation,
+    applyAuthButtonDisabledState,
+    buildLocalUserAuth,
+    buildStoredSessionPayload,
+    getAuthStateForPlan,
+    getPlusActivationPayload,
+    getPlusAuthState,
+    getSignedOutAuthState,
+    getRestoredAuthState,
+    runInitialUiSetup
+} from "./legacy-app-init.js";
+
+const days = ["月", "火", "水", "木", "金", "土", "日"];
 const startHour = 6;
 const endHour = 24;
 const hourHeight = 40;
@@ -146,28 +299,10 @@ let isProUser = false;
 let syncEnabled = false;
 
 let selectedDay = null;
+let modalSelectedDate = null;
 let editingEvent = null;
 let currentWeek = new Date();
 let pendingUpgrade = false;
-
-const baseEventTypes = [];
-const baseTypeOverridesKey = "base-event-type-overrides";
-const baseTypeDeletedKey = "base-event-type-deleted";
-const typeLabelCacheKey = "event-type-label-cache";
-const customTypePalette = [
-    "#123060",
-    "#5b8def",
-    "#0ea5e9",
-    "#7cc7ff",
-    "#10b981",
-    "#f6c344",
-    "#d97706",
-    "#ff8c00",
-    "#ef4444",
-    "#8b5cf6",
-    "#8b5e3b",
-    "#333333"
-];
 
 let editingTypeId = null;
 let editingTypeIsBase = false;
@@ -234,173 +369,6 @@ function migrateBaseTypesToCustomIfNeeded() {
     localStorage.setItem(seededTypeLabelCacheKey, "1");
 }
 
-function loadCustomTypes() {
-    try {
-        const raw = JSON.parse(localStorage.getItem("custom-event-types") || "[]");
-        if (!Array.isArray(raw)) return [];
-        return raw.map(t => {
-            if (!t || typeof t !== "object") return null;
-            const id = typeof t.id === "string" ? t.id : null;
-            if (!id) return null;
-            const label = typeof t.label === "string" && t.label.trim() ? t.label : id;
-            const color = typeof t.color === "string" && t.color ? t.color : customTypePalette[0];
-            return { id, label, color, deleted: !!t.deleted };
-        }).filter(Boolean);
-    } catch {
-        return [];
-    }
-}
-
-function saveCustomTypes(types) {
-    localStorage.setItem("custom-event-types", JSON.stringify(types));
-}
-
-function loadTypeLabelCache() {
-    try {
-        const raw = JSON.parse(localStorage.getItem(typeLabelCacheKey) || "{}");
-        return raw && typeof raw === "object" ? raw : {};
-    } catch {
-        return {};
-    }
-}
-
-function saveTypeLabelCache(cache) {
-    localStorage.setItem(typeLabelCacheKey, JSON.stringify(cache));
-}
-
-function updateTypeLabelCache(typeId, label, color) {
-    if (!typeId || !label) return;
-    const cache = loadTypeLabelCache();
-    const next = { label, color: color || "" };
-    if (!cache[typeId] || cache[typeId].label !== next.label || cache[typeId].color !== next.color) {
-        cache[typeId] = next;
-        saveTypeLabelCache(cache);
-    }
-}
-
-function removeTypeLabelCache(typeId) {
-    if (!typeId) return;
-    const cache = loadTypeLabelCache();
-    if (cache[typeId]) {
-        delete cache[typeId];
-        saveTypeLabelCache(cache);
-    }
-}
-
-function syncTypeLabelCacheFromTypes() {
-    const cache = loadTypeLabelCache();
-    let changed = false;
-    getAllTypes().forEach(t => {
-        if (!cache[t.id] || cache[t.id].label !== t.label || cache[t.id].color !== t.color) {
-            cache[t.id] = { label: t.label, color: t.color || "" };
-            changed = true;
-        }
-    });
-    if (changed) saveTypeLabelCache(cache);
-}
-
-function syncTypeLabelCacheFromEvents() {
-    const cache = loadTypeLabelCache();
-    let changed = false;
-    const events = collectAllLocalEvents();
-    events.forEach(ev => {
-        if (!ev || !ev.type || !ev.typeLabel) return;
-        const color = ev.typeColor || cache[ev.type]?.color || "";
-        if (!cache[ev.type] || cache[ev.type].label !== ev.typeLabel || cache[ev.type].color !== color) {
-            cache[ev.type] = { label: ev.typeLabel, color };
-            changed = true;
-        }
-    });
-    if (changed) saveTypeLabelCache(cache);
-}
-
-function ensureCustomTypesFromCache() {
-    const cache = loadTypeLabelCache();
-    const customTypes = loadCustomTypes();
-    let changed = false;
-    Object.entries(cache).forEach(([id, meta]) => {
-        if (!id.startsWith("custom-")) return;
-        if (!meta || !meta.label) return;
-        if (customTypes.some(t => t.id === id)) return;
-        customTypes.push({
-            id,
-            label: meta.label,
-            color: meta.color || customTypePalette[0]
-        });
-        changed = true;
-    });
-    if (changed) saveCustomTypes(customTypes);
-}
-
-function rebuildCustomTypesFromEvents() {
-    const customTypes = loadCustomTypes();
-    const existingIds = new Set(customTypes.map(t => t.id));
-    let changed = false;
-    const events = collectAllLocalEvents();
-    const cache = loadTypeLabelCache();
-    events.forEach(ev => {
-        if (!ev || !ev.type || !String(ev.type).startsWith("custom-")) return;
-        if (existingIds.has(ev.type)) return;
-        const label = ev.typeLabel || cache[ev.type]?.label;
-        if (!label) return;
-        const color = ev.typeColor || cache[ev.type]?.color || customTypePalette[0];
-        customTypes.push({ id: ev.type, label, color });
-        existingIds.add(ev.type);
-        changed = true;
-    });
-    if (changed) saveCustomTypes(customTypes);
-}
-
-function getVisibleCustomTypes() {
-    return loadCustomTypes().filter(t => !t.deleted);
-}
-
-function getCustomTypeById(id) {
-    return loadCustomTypes().find(t => t.id === id);
-}
-
-function loadBaseTypeOverrides() {
-    try { return JSON.parse(localStorage.getItem(baseTypeOverridesKey) || "{}"); }
-    catch { return {}; }
-}
-
-function saveBaseTypeOverrides(overrides) {
-    localStorage.setItem(baseTypeOverridesKey, JSON.stringify(overrides));
-}
-
-function loadDeletedBaseTypes() {
-    try { return JSON.parse(localStorage.getItem(baseTypeDeletedKey) || "[]"); }
-    catch { return []; }
-}
-
-function saveDeletedBaseTypes(ids) {
-    localStorage.setItem(baseTypeDeletedKey, JSON.stringify(ids));
-}
-
-function getBaseTypes() {
-    const overrides = loadBaseTypeOverrides();
-    const deleted = new Set(loadDeletedBaseTypes());
-    return baseEventTypes
-        .filter(t => !deleted.has(t.id))
-        .map(t => ({ ...t, ...(overrides[t.id] || {}) }));
-}
-
-function getAllTypes() {
-    return [...getBaseTypes(), ...getVisibleCustomTypes()];
-}
-
-function resolveTypeMeta(typeId, preferLabel) {
-    if (!typeId) return null;
-    const base = getBaseTypes().find(t => t.id === typeId);
-    if (base) return base;
-    const custom = loadCustomTypes().find(t => t.id === typeId);
-    if (custom) return custom;
-    const cached = loadTypeLabelCache()[typeId];
-    const label = preferLabel || cached?.label || "";
-    const color = cached?.color || "";
-    return { id: typeId, label, color };
-}
-
 function setTypePickerOpen(nextState) {
     if (!typePickerPanel || !typePickerBtn) return;
     const willOpen = typeof nextState === "boolean"
@@ -431,7 +399,7 @@ function renderTypePicker(types, selectedId) {
         list.appendChild(empty);
         return;
     }
-    const selectedType = types.find(t => t.id === selectedId) || resolveTypeMeta(selectedId) || types[0];
+    const selectedType = findSelectedType(types, selectedId, resolveTypeMeta);
     const swatch = typePickerBtn.querySelector(".type-picker-swatch");
     const label = typePickerBtn.querySelector(".type-picker-label");
     if (swatch) swatch.style.background = selectedType?.color || "#cbd5e1";
@@ -492,36 +460,22 @@ function renderTypePicker(types, selectedId) {
 function renderTypeOptions(selectedId, selectedLabel) {
     if (!typeSelect) return;
     const allTypes = getAllTypes();
+    const state = getTypeSelectState(allTypes, selectedId, selectedLabel, resolveTypeMeta);
     typeSelect.innerHTML = "";
-    allTypes.forEach(t => {
+    state.options.forEach(t => {
         const opt = document.createElement("option");
         opt.value = t.id;
         opt.textContent = t.label;
         typeSelect.appendChild(opt);
     });
-    if (selectedId && !allTypes.some(t => t.id === selectedId)) {
-        const fallback = resolveTypeMeta(selectedId, selectedLabel);
-        const label = fallback?.label || "";
-        if (label) {
-            const opt = document.createElement("option");
-            opt.value = selectedId;
-            opt.textContent = label;
-            typeSelect.appendChild(opt);
-            typeSelect.value = selectedId;
-            return;
-        }
-    }
-    if (allTypes.length === 0) return;
-    const fallbackId = allTypes[0].id;
-    typeSelect.value = selectedId && allTypes.some(t => t.id === selectedId)
-        ? selectedId
-        : fallbackId;
+    if (!state.options.length) return;
+    typeSelect.value = state.value;
     renderTypePicker(allTypes, typeSelect.value);
 }
 
 function renderColorOptions(selectedValue) {
     if (!typeColorInput) return;
-    const value = selectedValue || customTypePalette[0];
+    const value = getDefaultTypeColor(selectedValue, customTypePalette);
     applyTypeColor(value);
 }
 
@@ -561,7 +515,7 @@ function bindColorSwatches() {
 
 function renderTypeList() {
     if (!typeList) return;
-    const allTypes = getAllTypes();
+    const allTypes = buildTypeListItems(getAllTypes());
     typeList.innerHTML = "";
     if (allTypes.length === 0) {
         const empty = document.createElement("li");
@@ -599,60 +553,19 @@ function renderTypeList() {
     });
 }
 
-function getStoredSession() {
-    try { return JSON.parse(localStorage.getItem("session") || "null"); }
-    catch { return null; }
-}
-
-function setStoredSession(session) {
-    localStorage.setItem("session", JSON.stringify(session));
-}
-
-function clearStoredSession() {
-    localStorage.removeItem("session");
-}
-
-function getStoredPlanForUser(userId) {
-    if (!userId) return null;
-    try {
-        const raw = JSON.parse(localStorage.getItem("plan") || "{}");
-        return raw[userId] || null;
-    } catch {
-        return null;
-    }
-}
-
-function setStoredPlanForUser(userId, plan) {
-    if (!userId) return;
-    const next = { userId, plan, updatedAt: new Date().toISOString() };
-    let raw = {};
-    try { raw = JSON.parse(localStorage.getItem("plan") || "{}"); }
-    catch { raw = {}; }
-    raw[userId] = next;
-    localStorage.setItem("plan", JSON.stringify(raw));
-}
-
 function updateSyncStatus() {
-    if (!authState.isLoggedIn) {
-        authStatus.textContent = "未ログイン";
-        if (syncRefreshBtn) syncRefreshBtn.style.display = "none";
-        return;
-    }
-    if (authState.plan === "plus") {
-        authStatus.textContent = " ログイン（Plus：同期中）";
-        if (syncRefreshBtn) syncRefreshBtn.style.display = "none";
-        return;
-    }
-    authStatus.textContent = "同期状態: ログイン（Free：ローカル保存）";
-    if (syncRefreshBtn) syncRefreshBtn.style.display = "inline-block";
+    const state = getSyncStatusText(authState.isLoggedIn, authState.plan);
+    authStatus.textContent = state.text;
+    if (syncRefreshBtn) syncRefreshBtn.style.display = state.showRefresh ? "inline-block" : "none";
 }
 
 function applyAuthState({ isLoggedIn, user, plan }) {
-    authState.isLoggedIn = !!isLoggedIn;
-    authState.user = user || null;
-    authState.plan = plan || "free";
-    isProUser = authState.plan === "plus";
-    syncEnabled = isProUser;
+    const nextState = getNextAuthState({ isLoggedIn, user, plan });
+    authState.isLoggedIn = nextState.isLoggedIn;
+    authState.user = nextState.user;
+    authState.plan = nextState.plan;
+    isProUser = nextState.isProUser;
+    syncEnabled = nextState.syncEnabled;
     setAuthUI(authState.isLoggedIn, authState.plan);
     updateSyncStatus();
     if (accountOpenBtn) accountOpenBtn.disabled = !authState.isLoggedIn;
@@ -661,37 +574,32 @@ function applyAuthState({ isLoggedIn, user, plan }) {
 
 function initLocalSessionState() {
     const session = getStoredSession();
-    if (session && session.userId) {
-        const storedPlan = getStoredPlanForUser(session.userId);
-        applyAuthState({
-            isLoggedIn: true,
-            user: { id: session.userId, email: session.email || "" },
-            plan: storedPlan && storedPlan.plan ? storedPlan.plan : "free"
-        });
-        return;
-    }
-    applyAuthState({ isLoggedIn: false, plan: "free", user: null });
+    const storedPlan = session && session.userId ? getStoredPlanForUser(session.userId) : null;
+    applyAuthState(getRestoredAuthState(session, storedPlan));
 }
 
 function clearSyncMessage() {
     if (!syncMessage) return;
-    syncMessage.textContent = "";
-    syncMessage.className = "sync-message";
-    syncMessage.style.display = "none";
+    const state = getSyncMessageState("", "warning");
+    syncMessage.textContent = state.text;
+    syncMessage.className = state.className;
+    syncMessage.style.display = state.display;
     if (upgradeBtn) upgradeBtn.classList.remove("attention");
 }
 
 function showSyncMessage(message, tone = "warning") {
     if (!syncMessage) return;
-    syncMessage.textContent = message;
-    syncMessage.className = `sync-message ${tone}`;
-    syncMessage.style.display = message ? "block" : "none";
+    const state = getSyncMessageState(message, tone);
+    syncMessage.textContent = state.text;
+    syncMessage.className = state.className;
+    syncMessage.style.display = state.display;
 }
 
 function setInlineError(el, message) {
     if (!el) return;
-    el.textContent = message || "";
-    el.style.display = message ? "block" : "none";
+    const state = getInlineErrorState(message);
+    el.textContent = state.text;
+    el.style.display = state.display;
 }
 
 function setButtonLoading(button, isLoading, loadingLabel) {
@@ -712,15 +620,6 @@ function isValidEmail(email) {
 
 function normalizeEmail(email) {
     return (email || "").trim().toLowerCase();
-}
-
-function loadLocalUsers() {
-    try { return JSON.parse(localStorage.getItem("users") || "[]"); }
-    catch { return []; }
-}
-
-function saveLocalUsers(users) {
-    localStorage.setItem("users", JSON.stringify(users));
 }
 
 function bufferToBase64(buffer) {
@@ -767,34 +666,7 @@ function generateSalt() {
 }
 
 function mapAuthError(err, context) {
-    const code = (err && err.code) ? String(err.code) : "";
-    if (code === "local/email-already-in-use") return "このメールアドレスは既に登録されています。";
-    if (code === "local/user-not-found") return "このメールアドレスは登録されていません。";
-    if (code === "local/wrong-password") return "パスワードが正しくありません。";
-    if (code === "local/invalid-email") return "メール形式が不正です。";
-    if (code === "local/weak-password") return "パスワードは8文字以上にしてください。";
-    if (context === "signup") {
-        if (code === "auth/email-already-in-use") return "このメールアドレスは既に登録されています。";
-        if (code === "auth/invalid-email") return "メール形式が不正です。";
-        if (code === "auth/weak-password") return "パスワードが弱すぎます。8文字以上にしてください。";
-        if (code === "auth/too-many-requests") return "操作回数が多すぎます。時間を置いて再度お試しください。";
-        return "新規登録に失敗しました。時間を置いて再度お試しください。";
-    }
-    if (code === "auth/user-not-found") return "このメールアドレスは登録されていません。";
-    if (code === "auth/wrong-password") return "パスワードが正しくありません。";
-    if (code === "auth/invalid-credential") return "メールアドレスまたはパスワードが正しくありません。";
-    if (code === "auth/invalid-email") return "メール形式が不正です。";
-    if (code === "auth/too-many-requests") return "操作回数が多すぎます。時間を置いて再度お試しください。";
-    return "ログインに失敗しました。メールとパスワードをご確認ください。";
-}
-
-function isPermissionDeniedError(err) {
-    const code = (err && err.code) ? String(err.code) : "";
-    const msg = (err && err.message) ? String(err.message) : "";
-    return code.includes("permission-denied")
-        || code.includes("PERMISSION_DENIED")
-        || msg.includes("permission-denied")
-        || msg.includes("PERMISSION_DENIED");
+    return mapAuthErrorMessage(err, context);
 }
 
 function handleSyncError(err) {
@@ -825,31 +697,28 @@ days.forEach((day, i) => {
     const timeline = document.createElement("div");
     timeline.className = "timeline";
     timeline.dataset.day = i;
-    const totalHours = endHour - startHour + 1;
-    timeline.style.height = totalHours * hourHeight + "px";
+    timeline.style.height = getTimelineHeight(startHour, endHour, hourHeight);
 
-    for (let h = startHour; h <= endHour; h++) {
+    buildTimelineHourMarks(startHour, endHour, hourHeight).forEach(mark => {
         const line = document.createElement("div");
         line.className = "hour-line";
-        line.style.top = (h - startHour) * hourHeight + "px";
+        line.style.top = mark.top;
 
         const label = document.createElement("div");
         label.className = "hour-label";
-        label.style.top = (h - startHour) * hourHeight + "px";
-        label.textContent = `${h}:00`;
+        label.style.top = mark.top;
+        label.textContent = mark.label;
 
         timeline.appendChild(line);
         timeline.appendChild(label);
-    }
+    });
 
     timeline.addEventListener("dblclick", (e) => {
-        selectedDay = i;
         const rect = e.currentTarget.getBoundingClientRect();
-        const y = e.clientY - rect.top;
-        const hour = Math.floor(y / hourHeight) + startHour;
-
-        startInput.value = format(hour);
-        endInput.value = format(hour + 1);
+        const state = getTimelineCreateEventState(e.clientY, rect.top, startHour, hourHeight, i, format);
+        selectedDay = state.selectedDay;
+        startInput.value = state.start;
+        endInput.value = state.end;
         openModal();
     });
 
@@ -859,8 +728,11 @@ days.forEach((day, i) => {
 
 // ==================== モーダル操作 ====================
 function closeMainModal() {
-    modal.style.display = "none";
+    const state = getClosedEventModalState();
+    modal.style.display = state.display;
     setTypePanelOpen(false);
+    if (state.clearSelectedDate) modalSelectedDate = null;
+    if (state.clearEditingEvent) editingEvent = null;
 }
 
 cancelBtn.addEventListener("click", closeMainModal);
@@ -1002,37 +874,28 @@ function bindUIHandlers() {
 }
 
 function openModal(eventObj = null) {
+    const modalState = getEventModalState(eventObj, {
+        selectedDay,
+        currentWeek,
+        getWeekDate
+    });
+    const viewState = getOpenedEventModalState(modalState, format);
     editingEvent = eventObj;
-    modalTitle.textContent = eventObj ? "予定を編集" : "予定を追加";
-    modal.style.display = "flex";
+    modalTitle.textContent = viewState.title;
+    modal.style.display = viewState.display;
     setTypePanelOpen(false);
 
-    if (eventObj) {
-        titleInput.value = eventObj.title;
-        renderTypeOptions(eventObj.type, eventObj.typeLabel);
-        startInput.value = format(eventObj.start);
-        endInput.value = format(eventObj.end);
-        repeatSelect.value = eventObj.repeat || 'none';   // ← 追加
-        if (typeof eventObj.tapToggle === "boolean") {
-            tapToggleInput.checked = eventObj.tapToggle;
-        } else {
-            tapToggleInput.checked = eventObj.type === "school";
-        }
-        selectedDay = eventObj.day;
-        deleteBtn.style.display = "inline-block";
-        deleteScopeRow.style.display = "block";
-        deleteScopeSelect.value = "single"; // 初期選択は単発削除に固定
-    } else {
-        titleInput.value = "";
-        renderTypeOptions("school");                      // お好みで初期値
-        startInput.value = "09:00";
-        endInput.value = "10:00";
-        repeatSelect.value = "none";                      // ← 追加
-        tapToggleInput.checked = true;
-        deleteBtn.style.display = "none";
-        deleteScopeRow.style.display = "none";
-        deleteScopeSelect.value = "single";
-    }
+    titleInput.value = viewState.form.title;
+    renderTypeOptions(viewState.form.typeId, viewState.form.typeLabel);
+    startInput.value = viewState.form.start;
+    endInput.value = viewState.form.end;
+    repeatSelect.value = viewState.form.repeat;
+    tapToggleInput.checked = viewState.form.tapToggle;
+    selectedDay = viewState.form.selectedDay;
+    modalSelectedDate = viewState.form.selectedDate;
+    deleteBtn.style.display = viewState.deleteButtonDisplay;
+    deleteScopeRow.style.display = viewState.deleteScopeRowDisplay;
+    deleteScopeSelect.value = viewState.deleteScopeValue;
 }
 
 function openDatePicker() {
@@ -1066,21 +929,21 @@ function setupDatePickerOptions(baseDate) {
     const day = baseDate.getDate();
 
     datePickerYear.innerHTML = "";
-    for (let y = year - 5; y <= year + 5; y++) {
+    buildDatePickerYears(year).forEach(y => {
         const opt = document.createElement("option");
         opt.value = String(y);
         opt.textContent = `${y}`;
         datePickerYear.appendChild(opt);
-    }
+    });
     datePickerYear.value = String(year);
 
     datePickerMonth.innerHTML = "";
-    for (let m = 1; m <= 12; m++) {
+    buildDatePickerMonths().forEach(m => {
         const opt = document.createElement("option");
         opt.value = String(m);
         opt.textContent = `${m}`;
         datePickerMonth.appendChild(opt);
-    }
+    });
     datePickerMonth.value = String(month);
 
     updateDatePickerDays(day);
@@ -1092,17 +955,16 @@ function updateDatePickerDays(preferredDay) {
     const year = parseInt(datePickerYear.value, 10);
     const month = parseInt(datePickerMonth.value, 10);
     if (!year || !month) return;
-    const daysInMonth = new Date(year, month, 0).getDate();
     const current = preferredDay || parseInt(datePickerDay.value || "1", 10);
 
     datePickerDay.innerHTML = "";
-    for (let d = 1; d <= daysInMonth; d++) {
+    buildDatePickerDays(year, month).forEach(d => {
         const opt = document.createElement("option");
         opt.value = String(d);
         opt.textContent = `${d}`;
         datePickerDay.appendChild(opt);
-    }
-    const safeDay = Math.min(current || 1, daysInMonth);
+    });
+    const safeDay = getSafeDatePickerDay(year, month, current);
     datePickerDay.value = String(safeDay);
     renderDatePickerCalendar();
 }
@@ -1132,29 +994,24 @@ function renderDatePickerCalendar() {
         datePickerCalendar.appendChild(el);
     });
 
-    const first = new Date(year, month - 1, 1);
-    const startDay = first.getDay();
-    const daysInMonth = new Date(year, month, 0).getDate();
-    const today = new Date();
-    const isCurrentMonth = today.getFullYear() === year && (today.getMonth() + 1) === month;
+    buildDatePickerCalendarModel(year, month).forEach(item => {
+        if (item.type === "blank") {
+            const blank = document.createElement("div");
+            blank.className = "date-picker-day is-muted";
+            blank.textContent = "";
+            datePickerCalendar.appendChild(blank);
+            return;
+        }
 
-    for (let i = 0; i < startDay; i++) {
-        const blank = document.createElement("div");
-        blank.className = "date-picker-day is-muted";
-        blank.textContent = "";
-        datePickerCalendar.appendChild(blank);
-    }
-
-    for (let d = 1; d <= daysInMonth; d++) {
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = "date-picker-day";
-        btn.textContent = String(d);
-        if (isCurrentMonth && d === today.getDate()) {
+        btn.textContent = String(item.day);
+        if (item.isToday) {
             btn.classList.add("is-today");
         }
         btn.addEventListener("click", () => {
-            if (datePickerDay) datePickerDay.value = String(d);
+            if (datePickerDay) datePickerDay.value = String(item.day);
             const selected = getDatePickerValue();
             if (!selected) return;
             currentWeek = selected;
@@ -1163,61 +1020,17 @@ function renderDatePickerCalendar() {
             closeDatePicker();
         });
         datePickerCalendar.appendChild(btn);
-    }
+    });
 }
 
-
-// ==================== 時間変換 ====================
-function parseTime(t) {
-    const [h, m] = t.split(":").map(Number);
-    return h + m / 60;
-}
-
-function format(t) {
-    const h = Math.floor(t);
-    const m = Math.round((t - h) * 60);
-    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-}
-
-function getWeekStart(baseDate) {
-    const weekStart = new Date(baseDate);
-    const day = weekStart.getDay();
-    const diff = day === 0 ? -6 : 1 - day;
-    weekStart.setDate(weekStart.getDate() + diff);
-    weekStart.setHours(0, 0, 0, 0);
-    return weekStart;
-}
-
-function getWeekDate(baseDate, dayIndex) {
-    const date = getWeekStart(baseDate);
-    date.setDate(date.getDate() + dayIndex);
-    return date;
-}
-
-function getMondayBasedDayIndex(date) {
-    return date.getDay() === 0 ? 6 : date.getDay() - 1;
-}
 
 // ==================== 今日をハイライト ====================
 function highlightCurrentDay() {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    // 現在表示している週の月曜～日曜を計算
-    const weekStart = getWeekStart(currentWeek);
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekStart.getDate() + 6);
-    weekEnd.setHours(23, 59, 59, 999);
-
-    // まず全てリセット
     document.querySelectorAll(".day-header").forEach(h => h.classList.remove("current-day"));
-
-    // 今日が今の週に含まれていればその曜日を黄色に
-    if (today >= weekStart && today <= weekEnd) {
-        const dayIndex = getMondayBasedDayIndex(today);
-        const header = document.querySelectorAll(".day-header")[dayIndex];
-        if (header) header.classList.add("current-day");
-    }
+    const dayIndex = getCurrentDayHeaderIndex(currentWeek, getWeekStart, getMondayBasedDayIndex);
+    if (dayIndex < 0) return;
+    const header = document.querySelectorAll(".day-header")[dayIndex];
+    if (header) header.classList.add("current-day");
 }
 
 // ==================== 週切り替え ====================
@@ -1233,52 +1046,19 @@ document.getElementById('nextWeek').addEventListener('click', () => {
 
 function updateWeekView() {
     const weekLabel = document.getElementById('weekLabel');
-    const year = currentWeek.getFullYear();
-    const month = currentWeek.getMonth() + 1;
-    const weekNum = Math.ceil(currentWeek.getDate() / 7);
-    weekLabel.textContent = `${year}年${month}月第${weekNum}週`;
+    weekLabel.textContent = buildWeekLabel(currentWeek);
 
-    // 今週の月曜から日曜の日付を計算
-    const weekStart = getWeekStart(currentWeek);
-
-    // 曜日ヘッダーに実日付を埋め込み & クリックでToDoを開く
+    const headerItems = buildWeekHeaderItems(days, currentWeek, getWeekStart, getWeekDate, toISODate, toJPLabel);
     document.querySelectorAll(".day-header").forEach((header, i) => {
-        const date = getWeekDate(weekStart, i);
-        const label = toJPLabel(date);
-        header.textContent = label;
-        header.dataset.date = toISODate(date); // ← この日付キーでToDo保存
-
-        // クリックで当日のToDoパネルを開く
-        header.onclick = () => openTodoForDate(date);
+        const item = headerItems[i];
+        if (!item) return;
+        header.textContent = item.label;
+        header.dataset.date = item.dateISO;
+        header.onclick = () => openTodoForDate(item.date);
     });
 
     highlightCurrentDay(); // 今日を黄色に
     renderEvents();
-}
-
-function todoKey(dateISO) {
-    return `todos-${dateISO}`; // 例: todos-2025-10-25
-}
-
-function todoMemoKey(dateISO) {
-    return `todo-memo-${dateISO}`;
-}
-
-function loadTodos(dateISO) {
-    try { return JSON.parse(localStorage.getItem(todoKey(dateISO)) || "[]"); }
-    catch { return []; }
-}
-
-function saveTodos(dateISO, items) {
-    localStorage.setItem(todoKey(dateISO), JSON.stringify(items));
-}
-
-function loadTodoMemo(dateISO) {
-    return localStorage.getItem(todoMemoKey(dateISO)) || "";
-}
-
-function saveTodoMemo(dateISO, text) {
-    localStorage.setItem(todoMemoKey(dateISO), text);
 }
 
 function renderTodoMemo(dateISO) {
@@ -1300,8 +1080,7 @@ function renderTodoList(dateISO) {
         cb.type = "checkbox";
         cb.checked = !!item.done;
         cb.onchange = () => {
-            item.done = cb.checked;
-            saveTodos(dateISO, items);
+            saveTodos(dateISO, toggleTodoItem(items, item.id, cb.checked));
             renderTodoList(dateISO);
         };
 
@@ -1313,8 +1092,7 @@ function renderTodoList(dateISO) {
         del.className = "todo-delete";
         del.textContent = "削除";
         del.onclick = () => {
-            const next = items.filter(x => x.id !== item.id);
-            saveTodos(dateISO, next);
+            saveTodos(dateISO, deleteTodoItem(items, item.id));
             renderTodoList(dateISO);
             syncTodosToRemote(dateISO);
         };
@@ -1327,8 +1105,7 @@ function renderTodoList(dateISO) {
             if (!nextText) return;
             const trimmed = nextText.trim();
             if (!trimmed) return;
-            item.text = trimmed;
-            saveTodos(dateISO, items);
+            saveTodos(dateISO, editTodoItem(items, item.id, trimmed));
             renderTodoList(dateISO);
             syncTodosToRemote(dateISO);
         };
@@ -1345,7 +1122,7 @@ function openTodoForDate(dateObj) {
     const dateISO = toISODate(dateObj);
     currentTodoDateKey = dateISO;
 
-    todoDateLabel.textContent = `ToDo: ${toJPLabel(dateObj)}`;
+    todoDateLabel.textContent = buildTodoPanelLabel(dateObj, toJPLabel);
     renderTodoList(dateISO);
     renderTodoMemo(dateISO);
     syncTodosToRemote(dateISO);
@@ -1371,9 +1148,7 @@ todoPanel.addEventListener("click", (e) => {
 function addTodo() {
     const text = todoInput.value.trim();
     if (!text || !currentTodoDateKey) return;
-    const items = loadTodos(currentTodoDateKey);
-    items.push({ id: Date.now(), text, done: false });
-    saveTodos(currentTodoDateKey, items);
+    saveTodos(currentTodoDateKey, addTodoItem(loadTodos(currentTodoDateKey), text));
     todoInput.value = "";
     renderTodoList(currentTodoDateKey);
     syncTodosToRemote(currentTodoDateKey);
@@ -1392,7 +1167,7 @@ function setMemoViewMode(hasText) {
     todoMemoSave.style.display = "none";
     todoMemoText.style.display = "block";
     todoMemoEdit.style.display = "inline-block";
-    todoMemoEdit.textContent = hasText ? "メモを編集" : "メモを追加";
+    todoMemoEdit.textContent = getMemoButtonLabel(hasText);
 }
 
 todoAdd.addEventListener("click", addTodo);
@@ -1417,8 +1192,7 @@ todoMemo.addEventListener("blur", () => {
 
 todoClearDone.addEventListener("click", () => {
     if (!currentTodoDateKey) return;
-    const items = loadTodos(currentTodoDateKey).filter(i => !i.done);
-    saveTodos(currentTodoDateKey, items);
+    saveTodos(currentTodoDateKey, clearCompletedTodoItems(loadTodos(currentTodoDateKey)));
     renderTodoList(currentTodoDateKey);
     syncTodosToRemote(currentTodoDateKey);
 });
@@ -1430,8 +1204,7 @@ function toggleEventCompletion(ev) {
         ? ev.tapToggle
         : ev.type === "school";
     if (!canToggle) return;
-    const key = `events-day${ev.day}`;
-    const events = JSON.parse(localStorage.getItem(key) || "[]");
+    const events = loadEventsForDay(ev.day);
     const idx = events.findIndex(x => x.id === ev.id);
     if (idx === -1) return;
 
@@ -1442,108 +1215,50 @@ function toggleEventCompletion(ev) {
         events[idx].assigned = nextCompleted;
     }
 
-    localStorage.setItem(key, JSON.stringify(events));
+    saveEventsForDay(ev.day, events);
     renderEvents(); // 反映
     syncEventsToRemote();
 }
 
-function toISODate(d) {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
-}
-
-function toJPLabel(d) {
-    const wd = ["日", "月", "火", "水", "木", "金", "土"][d.getDay()];
-    return `${d.getMonth() + 1}/${d.getDate()} (${wd})`;
-}
-
-
-
 // ==================== イベント保存 ====================
 function saveEvent() {
-    const title = titleInput.value.trim();
     const type = typeSelect.value;
     const start = parseTime(startInput.value);
     const end = parseTime(endInput.value);
-    const repeat = repeatSelect.value; // ← 変更
-
-    if (!title || start >= end) return;
+    const repeat = repeatSelect.value;
 
     const typeMeta = getAllTypes().find(t => t.id === type);
     const typeLabel = typeMeta ? typeMeta.label : type;
     const typeColor = typeMeta ? typeMeta.color : "";
     updateTypeLabelCache(type, typeLabel, typeColor);
 
-    if (!Number.isInteger(selectedDay) || selectedDay < 0 || selectedDay >= days.length) return;
-
-    const key = `events-day${selectedDay}`;
-    const eventDate = getWeekDate(currentWeek, selectedDay);
-
-    // 編集時は基準日以降だけを更新するためのしきい値
-    const changeStartDate = editingEvent && editingEvent.date
-        ? new Date(editingEvent.date)
-        : new Date(eventDate);
-    changeStartDate.setHours(0, 0, 0, 0);
-
-    const baseId = editingEvent ? editingEvent.baseId : Date.now();
-    const newEvent = {
-        id: Date.now(),
-        baseId,
-        title,
+    const draft = buildEventDraft({
+        title: titleInput.value,
         type,
         typeLabel,
         typeColor,
         start,
         end,
-        day: selectedDay,
-        date: eventDate.toISOString(),
         repeat,
-        tapToggle: !!tapToggleInput.checked,
-        completed: editingEvent
-            ? !!editingEvent.completed || (editingEvent.type === "school" && editingEvent.assigned)
-            : false
-    };
-
-    // ① まず同じ baseId を全曜日から削除（編集時は既存シリーズを消す）
-    days.forEach((_, i) => {
-        const k = `events-day${i}`;
-        let evs = JSON.parse(localStorage.getItem(k) || "[]");
-        evs = evs.filter(ev => {
-            if (ev.baseId !== baseId) return true;
-            if (!ev.date) return false;
-            const evDate = new Date(ev.date);
-            evDate.setHours(0, 0, 0, 0);
-            return evDate < changeStartDate; // 過去は残し、基準日以降を差し替え
-        });
-        localStorage.setItem(k, JSON.stringify(evs));
+        tapToggle: tapToggleInput.checked,
+        selectedDay,
+        modalSelectedDate,
+        editingEvent
+    }, {
+        currentWeek,
+        getWeekDate,
+        daysLength: days.length
     });
+    if (!draft) return;
 
-    // ② その後に “いまの曜日” の配列を取り直して新イベントを追加
-    let events = JSON.parse(localStorage.getItem(key) || "[]"); // ← ここで取り直すのがポイント
-    events.push(newEvent);
-    localStorage.setItem(key, JSON.stringify(events));
+    const repeatDates = repeat !== "none" ? generateRepeatDates(draft.eventDate, repeat) : [];
+    saveEventSeries(days, selectedDay, draft.newEvent, draft.changeStartDate, repeatDates, getMondayBasedDayIndex);
 
-    // ③ 繰り返しを展開
-    if (repeat !== 'none') {
-        const repeatDates = generateRepeatDates(eventDate, repeat);
-        repeatDates.forEach(date => {
-            const dayIndex = getMondayBasedDayIndex(date);
-            const repeatKey = `events-day${dayIndex}`;
-            const repeatEvents = JSON.parse(localStorage.getItem(repeatKey) || "[]");
-            repeatEvents.push({
-                ...newEvent,
-                id: Date.now() + Math.random(),
-                day: dayIndex,
-                date: date.toISOString(),
-            });
-            localStorage.setItem(repeatKey, JSON.stringify(repeatEvents));
-        });
-    }
-
-    modal.style.display = "none";
+    const closeState = getClosedEventModalState();
+    modal.style.display = closeState.display;
     setTypePanelOpen(false);
+    if (closeState.clearSelectedDate) modalSelectedDate = null;
+    if (closeState.clearEditingEvent) editingEvent = null;
     renderEvents();
     updateWeekView();
     backfillEventTypeMeta();
@@ -1551,44 +1266,7 @@ function saveEvent() {
 }
 
 function deleteEventByScope(targetEvent, scope) {
-    if (!targetEvent) return;
-    const baseId = Number(targetEvent.baseId);
-    const hasSeries = !Number.isNaN(baseId);
-    const normalizedScope = hasSeries ? scope : "single";
-
-    if (normalizedScope === "single") {
-        const key = `events-day${targetEvent.day}`;
-        let events = JSON.parse(localStorage.getItem(key) || "[]");
-        events = events.filter(ev => ev.id !== targetEvent.id);
-        localStorage.setItem(key, JSON.stringify(events));
-        return;
-    }
-
-    if (normalizedScope === "all") {
-        days.forEach((_, i) => {
-            const key = `events-day${i}`;
-            let events = JSON.parse(localStorage.getItem(key) || "[]");
-            events = events.filter(ev => ev.baseId !== baseId);
-            localStorage.setItem(key, JSON.stringify(events));
-        });
-        return;
-    }
-
-    const changeStartDate = targetEvent.date ? new Date(targetEvent.date) : new Date();
-    changeStartDate.setHours(0, 0, 0, 0);
-
-    days.forEach((_, i) => {
-        const key = `events-day${i}`;
-        let events = JSON.parse(localStorage.getItem(key) || "[]");
-        events = events.filter(ev => {
-            if (ev.baseId !== baseId) return true;
-            if (!ev.date) return false;
-            const evDate = new Date(ev.date);
-            evDate.setHours(0, 0, 0, 0);
-            return evDate < changeStartDate;
-        });
-        localStorage.setItem(key, JSON.stringify(events));
-    });
+    deleteStoredEventByScope(days, targetEvent, scope);
 }
 
 function deleteEvent() {
@@ -1596,32 +1274,22 @@ function deleteEvent() {
 
     const scope = deleteScopeSelect ? deleteScopeSelect.value : "future";
     deleteEventByScope(editingEvent, scope);
-    modal.style.display = "none";
+    const closeState = getClosedEventModalState();
+    modal.style.display = closeState.display;
     setTypePanelOpen(false);
+    if (closeState.clearSelectedDate) modalSelectedDate = null;
+    if (closeState.clearEditingEvent) editingEvent = null;
     renderEvents();
     syncEventsToRemote();
 }
 
 // ==================== 一括削除 ====================
 function collectWeekEvents() {
-    const result = [];
     const weekStart = getWeekStart(currentWeek);
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekStart.getDate() + 6);
     weekEnd.setHours(23, 59, 59, 999);
-
-    days.forEach((_, i) => {
-        const key = `events-day${i}`;
-        const events = JSON.parse(localStorage.getItem(key) || "[]");
-        events.forEach(ev => {
-            if (!ev.date) return;
-            const evDate = new Date(ev.date);
-            if (evDate >= weekStart && evDate <= weekEnd) {
-                result.push({ ...ev, day: i });
-            }
-        });
-    });
-    return result;
+    return collectStoredWeekEvents(days, weekStart, weekEnd);
 }
 
 function openBulkModal() {
@@ -1645,14 +1313,7 @@ function renderBulkList() {
         return;
     }
 
-    events.sort((a, b) => {
-        const da = new Date(a.date);
-        const db = new Date(b.date);
-        if (da.getTime() !== db.getTime()) return da - db;
-        return a.start - b.start;
-    });
-
-    events.forEach(ev => {
+    sortEventsByDateTime(events).forEach(ev => {
         const li = document.createElement("li");
         li.className = "bulk-item";
 
@@ -1665,8 +1326,7 @@ function renderBulkList() {
 
         const label = document.createElement("span");
         label.className = "bulk-label";
-        const dateObj = new Date(ev.date);
-        label.textContent = `${toJPLabel(dateObj)} ${ev.title} (${format(ev.start)}-${format(ev.end)})`;
+        label.textContent = buildBulkEventLabel(ev, toJPLabel, format);
 
         li.appendChild(cb);
         li.appendChild(label);
@@ -1675,30 +1335,13 @@ function renderBulkList() {
 }
 
 function bulkDeleteSelected() {
-    const checked = bulkList.querySelectorAll('input[type="checkbox"]:checked');
+    const checked = Array.from(bulkList.querySelectorAll('input[type="checkbox"]:checked'));
     if (!checked.length) {
         closeBulkModal();
         return;
     }
     const scope = bulkDeleteScope ? bulkDeleteScope.value : "single";
-    const processed = new Set();
-
-    checked.forEach(cb => {
-        const dayIndex = parseInt(cb.dataset.day, 10);
-        const id = Number(cb.dataset.id);
-        const baseId = cb.dataset.baseId ? Number(cb.dataset.baseId) : NaN;
-        const date = cb.dataset.date || null;
-        const key = `${scope}-${Number.isNaN(baseId) ? id : baseId}-${date || ""}`;
-        if (processed.has(key)) return;
-        processed.add(key);
-
-        deleteEventByScope({
-            day: dayIndex,
-            id,
-            baseId: Number.isNaN(baseId) ? null : baseId,
-            date
-        }, scope);
-    });
+    collectBulkDeleteTargets(checked, scope).forEach(target => deleteEventByScope(target, scope));
 
     closeBulkModal();
     renderEvents();
@@ -1713,12 +1356,11 @@ async function refreshPlanStatus({ forceRefresh = false, announce = false } = {}
         if (forceRefresh) await user.getIdToken(true);
         await user.getIdTokenResult();
         const nextPlan = "plus";
-        setStoredPlanForUser(user.uid, "plus");
-        applyAuthState({
-            isLoggedIn: true,
-            user: { id: user.uid, email: user.email || "" },
-            plan: nextPlan
-        });
+        applyPlusActivation({
+            setStoredSession,
+            setStoredPlanForUser,
+            applyAuthState
+        }, user);
         if (pendingUpgrade) closePlusModal();
         if (nextPlan === "plus") {
             await hydrateFromRemote();
@@ -1755,16 +1397,12 @@ async function initFirebaseSync() {
                 currentUser = user;
                 if (!user) {
                     currentUid = null;
-                    applyAuthState({ isLoggedIn: false, plan: "free", user: null });
+                    applyAuthState(getSignedOutAuthState());
                     clearSyncMessage();
                     return;
                 }
                 currentUid = user.uid;
-                setStoredSession({
-                    userId: user.uid,
-                    email: user.email || "",
-                    loggedInAt: new Date().toISOString()
-                });
+                setStoredSession(buildStoredSessionPayload(user));
                 await refreshPlanStatus({ forceRefresh: false, announce: false });
             });
         } catch (e) {
@@ -1813,12 +1451,12 @@ async function ensureFirebaseReady() {
 }
 
 function openAuthModal() {
-    authModal.style.display = "flex";
+    authModal.style.display = getModalDisplayState(true);
     setInlineError(authError, "");
 }
 
 function closeAuthModal() {
-    authModal.style.display = "none";
+    authModal.style.display = getModalDisplayState(false);
     setInlineError(authError, "");
     pendingUpgrade = false;
 }
@@ -1826,23 +1464,24 @@ function closeAuthModal() {
 function openAccountModal() {
     if (!accountModal) return;
     if (!authState.isLoggedIn) return;
-    accountModal.style.display = "flex";
+    accountModal.style.display = getModalDisplayState(true);
+    const emailState = getAccountFieldState(false);
+    const passwordState = getAccountFieldState(false);
     if (accountEmailFields) {
-        accountEmailFields.classList.remove("is-open");
-        accountEmailFields.setAttribute("aria-hidden", "true");
+        accountEmailFields.classList.toggle("is-open", emailState.classOpen);
+        accountEmailFields.setAttribute("aria-hidden", emailState.ariaHidden);
     }
     if (accountPasswordFields) {
-        accountPasswordFields.classList.remove("is-open");
-        accountPasswordFields.setAttribute("aria-hidden", "true");
+        accountPasswordFields.classList.toggle("is-open", passwordState.classOpen);
+        accountPasswordFields.setAttribute("aria-hidden", passwordState.ariaHidden);
     }
-    if (accountEmailToggleBtn) accountEmailToggleBtn.setAttribute("aria-expanded", "false");
-    if (accountPasswordToggleBtn) accountPasswordToggleBtn.setAttribute("aria-expanded", "false");
-    if (accountEmailInput) {
-        accountEmailInput.value = authState.user && authState.user.email ? authState.user.email : "";
-    }
-    if (accountCurrentPassword) accountCurrentPassword.value = "";
-    if (accountNewPassword) accountNewPassword.value = "";
-    if (accountNewPasswordConfirm) accountNewPasswordConfirm.value = "";
+    if (accountEmailToggleBtn) accountEmailToggleBtn.setAttribute("aria-expanded", emailState.ariaExpanded);
+    if (accountPasswordToggleBtn) accountPasswordToggleBtn.setAttribute("aria-expanded", passwordState.ariaExpanded);
+    const formState = getAccountModalFormState(authState.user && authState.user.email ? authState.user.email : "");
+    if (accountEmailInput) accountEmailInput.value = formState.email;
+    if (accountCurrentPassword) accountCurrentPassword.value = formState.currentPassword;
+    if (accountNewPassword) accountNewPassword.value = formState.newPassword;
+    if (accountNewPasswordConfirm) accountNewPasswordConfirm.value = formState.newPasswordConfirm;
     setInlineError(accountEmailError, "");
     setInlineError(accountPasswordError, "");
     setInlineError(accountError, "");
@@ -1850,7 +1489,7 @@ function openAccountModal() {
 
 function closeAccountModal() {
     if (!accountModal) return;
-    accountModal.style.display = "none";
+    accountModal.style.display = getModalDisplayState(false);
     setInlineError(accountEmailError, "");
     setInlineError(accountPasswordError, "");
     setInlineError(accountError, "");
@@ -1862,9 +1501,10 @@ function toggleAccountFields(target, nextState = null) {
     const toggleBtn = isEmail ? accountEmailToggleBtn : accountPasswordToggleBtn;
     if (!fields || !toggleBtn) return;
     const willOpen = typeof nextState === "boolean" ? nextState : !fields.classList.contains("is-open");
-    fields.classList.toggle("is-open", willOpen);
-    fields.setAttribute("aria-hidden", String(!willOpen));
-    toggleBtn.setAttribute("aria-expanded", String(willOpen));
+    const state = getAccountFieldState(willOpen);
+    fields.classList.toggle("is-open", state.classOpen);
+    fields.setAttribute("aria-hidden", state.ariaHidden);
+    toggleBtn.setAttribute("aria-expanded", state.ariaExpanded);
     if (!willOpen) {
         if (isEmail) setInlineError(accountEmailError, "");
         else setInlineError(accountPasswordError, "");
@@ -1873,43 +1513,44 @@ function toggleAccountFields(target, nextState = null) {
 
 function openSignupModal() {
     if (!signupModal) return;
-    signupModal.style.display = "flex";
-    if (signupEmail) signupEmail.value = "";
-    if (signupPassword) signupPassword.value = "";
-    if (signupPasswordConfirm) signupPasswordConfirm.value = "";
-    if (signupTerms) signupTerms.checked = false;
+    signupModal.style.display = getModalDisplayState(true);
+    const formState = getSignupModalFormState();
+    if (signupEmail) signupEmail.value = formState.email;
+    if (signupPassword) signupPassword.value = formState.password;
+    if (signupPasswordConfirm) signupPasswordConfirm.value = formState.passwordConfirm;
+    if (signupTerms) signupTerms.checked = formState.termsChecked;
     setInlineError(signupError, "");
 }
 
 function closeSignupModal() {
     if (!signupModal) return;
-    signupModal.style.display = "none";
+    signupModal.style.display = getModalDisplayState(false);
     setInlineError(signupError, "");
     pendingUpgrade = false;
 }
 
 function openPlusModal() {
     if (!plusModal) return;
-    plusModal.style.display = "flex";
+    plusModal.style.display = getModalDisplayState(true);
     setInlineError(plusError, "");
 }
 
 function closePlusModal() {
     if (!plusModal) return;
-    plusModal.style.display = "none";
+    plusModal.style.display = getModalDisplayState(false);
     setInlineError(plusError, "");
     pendingUpgrade = false;
 }
 
 function openPaymentModal() {
     if (!paymentModal) return;
-    paymentModal.style.display = "flex";
+    paymentModal.style.display = getModalDisplayState(true);
     setInlineError(paymentError, "");
 }
 
 function closePaymentModal() {
     if (!paymentModal) return;
-    paymentModal.style.display = "none";
+    paymentModal.style.display = getModalDisplayState(false);
     setInlineError(paymentError, "");
     pendingUpgrade = false;
 }
@@ -1917,7 +1558,7 @@ function closePaymentModal() {
 function startPlusUpgrade() {
     setInlineError(plusError, "");
     pendingUpgrade = true;
-    if (!authState.isLoggedIn) {
+    if (getUpgradeFlowTarget(authState.isLoggedIn) === "signup") {
         closePlusModal();
         openSignupModal();
         return;
@@ -1939,19 +1580,23 @@ async function submitPaymentMock() {
     }
     // TODO: Stripe Checkout / Customer Portal をここで呼び出す
     // NOTE: Netlify Functions 等のサーバー側処理が必要になります
-    setStoredPlanForUser(authState.user.id, "plus");
-    applyAuthState({ isLoggedIn: true, user: authState.user, plan: "plus" });
+    applyPlusActivation({
+        setStoredSession,
+        setStoredPlanForUser,
+        applyAuthState
+    }, authState.user);
     // TODO: ユーザー単位の保存キーに移行する場合はここで移行処理を行う
-    closePaymentModal();
-    closePlusModal();
-    closeSignupModal();
-    pendingUpgrade = false;
+    const closeState = getAuthSuccessCloseState({ closePayment: true, closePlus: true, closeSignup: true });
+    if (closeState.closePayment) closePaymentModal();
+    if (closeState.closePlus) closePlusModal();
+    if (closeState.closeSignup) closeSignupModal();
+    if (closeState.clearPendingUpgrade) pendingUpgrade = false;
 }
 
 async function logoutAccount() {
     if (!firebaseAuth) {
         clearStoredSession();
-        applyAuthState({ isLoggedIn: false, plan: "free", user: null });
+        applyAuthState(getSignedOutAuthState());
         clearSyncMessage();
         return;
     }
@@ -1961,7 +1606,7 @@ async function logoutAccount() {
         currentUser = null;
         currentUid = null;
         clearStoredSession();
-        applyAuthState({ isLoggedIn: false, plan: "free", user: null });
+        applyAuthState(getSignedOutAuthState());
         clearSyncMessage();
     } catch (err) {
         showSyncMessage("ログアウトに失敗しました。時間を置いて再度お試しください。", "warning");
@@ -1975,12 +1620,9 @@ async function updateAccountEmail() {
     }
     const nextEmail = (accountEmailInput && accountEmailInput.value ? accountEmailInput.value : "").trim();
     setInlineError(accountEmailError, "");
-    if (!nextEmail) {
-        setInlineError(accountEmailError, "メールアドレスを入力してください。");
-        return;
-    }
-    if (!isValidEmail(nextEmail)) {
-        setInlineError(accountEmailError, "メール形式が不正です。");
+    const emailValidationError = validateAccountEmailForm({ email: nextEmail, isValidEmail });
+    if (emailValidationError) {
+        setInlineError(accountEmailError, emailValidationError);
         return;
     }
     if (!firebaseAuth || !firebaseAuth.currentUser) {
@@ -1992,17 +1634,11 @@ async function updateAccountEmail() {
                 setInlineError(accountEmailError, "このメールアドレスは既に登録されています。");
                 return;
             }
-            const updatedUsers = users.map(u => (
-                u.id === authState.user.id ? { ...u, email: normalized } : u
-            ));
-            saveLocalUsers(updatedUsers);
-            setStoredSession({
-                userId: authState.user.id,
-                email: normalized,
-                loggedInAt: new Date().toISOString()
-            });
-            applyAuthState({ isLoggedIn: true, user: { ...authState.user, email: normalized }, plan: authState.plan });
-            setInlineError(accountEmailError, "メールアドレスを変更しました。");
+            updateLocalUserById(authState.user.id, user => ({ ...user, email: normalized }));
+            const localUser = buildLocalUserAuth(normalized, authState.user.id);
+            setStoredSession(buildStoredSessionPayload(localUser));
+            applyAuthState(getAuthStateForPlan(localUser, authState.plan));
+            setInlineError(accountEmailError, getAccountUpdateSuccessMessage("email"));
         } catch (err) {
             setInlineError(accountEmailError, mapAuthError(err, "signup"));
         }
@@ -2012,16 +1648,13 @@ async function updateAccountEmail() {
         const { updateEmail } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
         const user = firebaseAuth.currentUser;
         await updateEmail(user, nextEmail);
-        setStoredSession({
-            userId: user.uid,
-            email: nextEmail,
-            loggedInAt: new Date().toISOString()
-        });
-        applyAuthState({ isLoggedIn: true, user: { id: user.uid, email: nextEmail }, plan: authState.plan });
-        setInlineError(accountEmailError, "メールアドレスを変更しました。");
+        const nextUser = buildLocalUserAuth(nextEmail, user.uid);
+        setStoredSession(buildStoredSessionPayload(nextUser));
+        applyAuthState(getAuthStateForPlan(nextUser, authState.plan));
+        setInlineError(accountEmailError, getAccountUpdateSuccessMessage("email"));
     } catch (err) {
         if (err && err.code === "auth/requires-recent-login") {
-            setInlineError(accountEmailError, "再ログインが必要です。ログアウト後、再度お試しください。");
+            setInlineError(accountEmailError, getRequiresRecentLoginMessage());
             return;
         }
         setInlineError(accountEmailError, mapAuthError(err, "signup"));
@@ -2037,29 +1670,22 @@ async function updateAccountPassword() {
     const nextPassword = accountNewPassword && accountNewPassword.value ? accountNewPassword.value : "";
     const nextPasswordConfirm = accountNewPasswordConfirm && accountNewPasswordConfirm.value ? accountNewPasswordConfirm.value : "";
     setInlineError(accountPasswordError, "");
-    if (!currentPassword || !nextPassword || !nextPasswordConfirm) {
-        setInlineError(accountPasswordError, "現在のパスワードと新しいパスワードを入力してください。");
-        return;
-    }
-    if (nextPassword.length < 8) {
-        setInlineError(accountPasswordError, "パスワードは8文字以上にしてください。");
-        return;
-    }
-    if (nextPassword !== nextPasswordConfirm) {
-        setInlineError(accountPasswordError, "新しいパスワードが一致しません。");
+    const passwordValidationError = validateAccountPasswordForm({
+        currentPassword,
+        nextPassword,
+        nextPasswordConfirm
+    });
+    if (passwordValidationError) {
+        setInlineError(accountPasswordError, passwordValidationError);
         return;
     }
     if (!firebaseAuth || !firebaseAuth.currentUser) {
         try {
             await localLogin(authState.user.email || "", currentPassword);
-            const users = loadLocalUsers();
             const salt = generateSalt();
             const passwordHash = await hashPassword(nextPassword, salt);
-            const updatedUsers = users.map(u => (
-                u.id === authState.user.id ? { ...u, salt, passwordHash } : u
-            ));
-            saveLocalUsers(updatedUsers);
-            setInlineError(accountPasswordError, "パスワードを変更しました。");
+            updateLocalUserById(authState.user.id, user => ({ ...user, salt, passwordHash }));
+            setInlineError(accountPasswordError, getAccountUpdateSuccessMessage("password"));
         } catch (err) {
             setInlineError(accountPasswordError, mapAuthError(err, "login"));
         }
@@ -2071,10 +1697,10 @@ async function updateAccountPassword() {
         const credential = EmailAuthProvider.credential(user.email || "", currentPassword);
         await reauthenticateWithCredential(user, credential);
         await updatePassword(user, nextPassword);
-        setInlineError(accountPasswordError, "パスワードを変更しました。");
+        setInlineError(accountPasswordError, getAccountUpdateSuccessMessage("password"));
     } catch (err) {
         if (err && err.code === "auth/requires-recent-login") {
-            setInlineError(accountPasswordError, "再ログインが必要です。ログアウト後、再度お試しください。");
+            setInlineError(accountPasswordError, getRequiresRecentLoginMessage());
             return;
         }
         setInlineError(accountPasswordError, mapAuthError(err, "signup"));
@@ -2088,42 +1714,40 @@ function cancelSubscription() {
     }
     if (!confirm("解約しますか？同期は停止されます。")) return;
     setStoredPlanForUser(authState.user.id, "free");
-    applyAuthState({ isLoggedIn: true, user: authState.user, plan: "free" });
+    applyAuthState(getAuthStateForPlan(authState.user, "free"));
     setInlineError(accountError, "解約しました。同期は停止されます。");
 }
 
 function addCustomType() {
-    const label = (typeNewInput.value || "").trim();
+    const label = normalizeTypeLabel(typeNewInput.value);
     if (!label) return;
     const customTypes = loadCustomTypes();
-    const existing = getAllTypes().find(t => t.label === label);
+    const existing = findExistingTypeByLabel(getAllTypes(), label);
     if (existing) {
         renderTypeOptions(existing.id);
         typeNewInput.value = "";
         return;
     }
-    const id = `custom-${Date.now()}`;
-    const color = (typeColorInput && typeColorInput.value)
-        ? typeColorInput.value
-        : customTypePalette[customTypes.length % customTypePalette.length];
-    customTypes.push({ id, label, color });
+    const draft = buildNewTypeDraft(
+        label,
+        typeColorInput && typeColorInput.value ? typeColorInput.value : "",
+        customTypes,
+        customTypePalette
+    );
+    customTypes.push(draft);
     saveCustomTypes(customTypes);
-    updateTypeLabelCache(id, label, color);
-    renderTypeOptions(id);
+    updateTypeLabelCache(draft.id, draft.label, draft.color);
+    renderTypeOptions(draft.id);
     renderTypeList();
     typeNewInput.value = "";
     renderColorOptions();
 }
 
 function startEditType(id) {
-    const baseTypes = getBaseTypes();
-    const customTypes = loadCustomTypes();
-    const baseTarget = baseTypes.find(t => t.id === id);
-    const customTarget = customTypes.find(t => t.id === id);
-    const target = baseTarget || customTarget;
+    const target = resolveTypeEditTarget(id, getBaseTypes(), loadCustomTypes());
     if (!target) return;
-    editingTypeId = id;
-    editingTypeIsBase = !!baseTarget;
+    editingTypeId = target.id;
+    editingTypeIsBase = target.isBase;
     typeNewInput.value = target.label;
     renderColorOptions(target.color);
     if (typeEditSaveBtn) typeEditSaveBtn.disabled = false;
@@ -2132,10 +1756,10 @@ function startEditType(id) {
 
 function saveEditedType() {
     if (!editingTypeId) return;
-    const label = (typeNewInput.value || "").trim();
+    const label = normalizeTypeLabel(typeNewInput.value);
     if (!label) return;
     const color = (typeColorInput && typeColorInput.value) ? typeColorInput.value : customTypePalette[0];
-    const existsLabel = getAllTypes().find(t => t.label === label && t.id !== editingTypeId);
+    const existsLabel = findExistingTypeByLabel(getAllTypes(), label, editingTypeId);
     if (existsLabel) return;
     if (editingTypeIsBase) {
         const overrides = loadBaseTypeOverrides();
@@ -2191,63 +1815,22 @@ function deleteType(id) {
         saveCustomTypes(next);
     }
 
-    removeTypeLabelCache(id);
     const remainingTypes = getAllTypes();
     const fallbackId = remainingTypes.length ? remainingTypes[0].id : null;
-    if (fallbackId) {
-        replaceDeletedTypeInEvents(id, fallbackId);
-    }
     renderTypeOptions(fallbackId || undefined);
     renderTypeList();
     clearTypeEdit();
     renderEvents();
 }
 
-function replaceDeletedTypeInEvents(typeId, fallbackId) {
-    days.forEach((_, i) => {
-        const key = `events-day${i}`;
-        const events = JSON.parse(localStorage.getItem(key) || "[]");
-        let changed = false;
-        const updated = events.map(ev => {
-            if (ev.type !== typeId) return ev;
-            changed = true;
-            return {
-                ...ev,
-                type: fallbackId,
-                typeLabel: undefined,
-                typeColor: undefined
-            };
-        });
-        if (changed) localStorage.setItem(key, JSON.stringify(updated));
-    });
-}
-
 function backfillEventTypeMeta() {
     const typeMap = new Map(getAllTypes().map(t => [t.id, t]));
-    days.forEach((_, i) => {
-        const key = `events-day${i}`;
-        const events = JSON.parse(localStorage.getItem(key) || "[]");
-        let changed = false;
-        const updated = events.map(ev => {
-            const meta = typeMap.get(ev.type);
-            if (!meta) return ev;
-            if (ev.typeLabel === meta.label && ev.typeColor === meta.color) return ev;
-            changed = true;
-            return { ...ev, typeLabel: meta.label, typeColor: meta.color };
-        });
-        if (changed) localStorage.setItem(key, JSON.stringify(updated));
-    });
+    backfillStoredEventTypeMeta(days, typeMap);
 }
 
 
 function collectAllLocalEvents() {
-    const result = [];
-    days.forEach((_, i) => {
-        const key = `events-day${i}`;
-        const events = JSON.parse(localStorage.getItem(key) || "[]");
-        events.forEach(ev => result.push(ev));
-    });
-    return result;
+    return collectStoredEvents(days);
 }
 
 async function hydrateFromRemote() {
@@ -2287,20 +1870,14 @@ async function hydrateFromRemote() {
 }
 
 function resetLocalEvents(events) {
-    days.forEach((_, i) => localStorage.setItem(`events-day${i}`, "[]"));
-    events.forEach(ev => {
-        const key = `events-day${ev.day}`;
-        const arr = JSON.parse(localStorage.getItem(key) || "[]");
-        arr.push(ev);
-        localStorage.setItem(key, JSON.stringify(arr));
-    });
+    resetStoredEvents(days, events);
 }
 
 function resetLocalTodos(remoteTodos) {
     remoteTodos.forEach(({ id, items, memo }) => {
         if (!id) return;
-        localStorage.setItem(todoKey(id), JSON.stringify(items || []));
-        localStorage.setItem(todoMemoKey(id), memo || "");
+        saveTodos(id, items || []);
+        saveTodoMemo(id, memo || "");
     });
     if (currentTodoDateKey) {
         renderTodoList(currentTodoDateKey);
@@ -2371,54 +1948,37 @@ async function localSignup(email, password) {
     const normalized = normalizeEmail(email);
     if (!isValidEmail(normalized)) throw { code: "local/invalid-email" };
     if (password.length < 8) throw { code: "local/weak-password" };
-    const users = loadLocalUsers();
-    const exists = users.find(u => normalizeEmail(u.email) === normalized);
+    const exists = findLocalUserByEmail(normalized, normalizeEmail);
     if (exists) throw { code: "local/email-already-in-use" };
     const salt = generateSalt();
     const passwordHash = await hashPassword(password, salt);
-    const user = {
-        id: `local-${Date.now()}`,
-        email: normalized,
-        passwordHash,
-        salt,
-        createdAt: new Date().toISOString()
-    };
-    users.push(user);
-    saveLocalUsers(users);
-    return { id: user.id, email: user.email };
+    const user = createAndStoreLocalUser(normalized, passwordHash, salt);
+    return getLocalAuthUser(user);
 }
 
 async function localLogin(email, password) {
     const normalized = normalizeEmail(email);
     if (!isValidEmail(normalized)) throw { code: "local/invalid-email" };
-    const users = loadLocalUsers();
-    const user = users.find(u => normalizeEmail(u.email) === normalized);
+    const user = findLocalUserByEmail(normalized, normalizeEmail);
     if (!user) throw { code: "local/user-not-found" };
     const passwordHash = await hashPassword(password, user.salt);
-    if (passwordHash !== user.passwordHash) throw { code: "local/wrong-password" };
-    return { id: user.id, email: user.email };
+    const result = verifyLocalUserCredentials(normalized, passwordHash, normalizeEmail);
+    if (!result.ok) throw { code: result.code };
+    return getLocalAuthUser(result.user);
 }
 
 async function emailPasswordLogin() {
     const ready = await ensureFirebaseReady();
     if (!ready || !firebaseAuth) {
-        setInlineError(
-            authError,
-            firebaseInitFailed
-                ? "認証の初期化に失敗しました。再読み込みしてください。"
-                : "認証の初期化中です。少し待ってから再度お試しください。"
-        );
+        setInlineError(authError, getAuthReadyErrorMessage(firebaseInitFailed));
         return;
     }
     const email = (authEmail.value || "").trim();
     const password = authPassword.value || "";
     setInlineError(authError, "");
-    if (!email || !password) {
-        setInlineError(authError, "メールとパスワードを入力してください。");
-        return;
-    }
-    if (!isValidEmail(email)) {
-        setInlineError(authError, "メール形式が不正です。");
+    const loginError = validateLoginForm({ email, password, isValidEmail });
+    if (loginError) {
+        setInlineError(authError, loginError);
         return;
     }
     authStatus.textContent = "同期状態: ログイン処理中…";
@@ -2427,8 +1987,10 @@ async function emailPasswordLogin() {
     try {
         await signInWithEmailAndPassword(firebaseAuth, email, password);
         const shouldUpgrade = pendingUpgrade;
-        closeAuthModal();
-        if (shouldUpgrade) closePlusModal();
+        const closeState = getAuthSuccessCloseState({ closeAuth: true, closePlus: shouldUpgrade });
+        if (closeState.closeAuth) closeAuthModal();
+        if (closeState.closePlus) closePlusModal();
+        if (closeState.clearPendingUpgrade) pendingUpgrade = false;
     } catch (err) {
         setInlineError(authError, mapAuthError(err, "login"));
         updateSyncStatus();
@@ -2440,12 +2002,7 @@ async function emailPasswordLogin() {
 async function emailPasswordSignup() {
     const ready = await ensureFirebaseReady();
     if (!ready || !firebaseAuth) {
-        setInlineError(
-            signupError,
-            firebaseInitFailed
-                ? "認証の初期化に失敗しました。再読み込みしてください。"
-                : "認証の初期化中です。少し待ってから再度お試しください。"
-        );
+        setInlineError(signupError, getAuthReadyErrorMessage(firebaseInitFailed));
         return;
     }
     const email = (signupEmail && signupEmail.value ? signupEmail.value : "").trim();
@@ -2454,24 +2011,15 @@ async function emailPasswordSignup() {
     const agreed = !!(signupTerms && signupTerms.checked);
 
     setInlineError(signupError, "");
-    if (!email || !password || !passwordConfirm) {
-        setInlineError(signupError, "メールとパスワードを入力してください。");
-        return;
-    }
-    if (!isValidEmail(email)) {
-        setInlineError(signupError, "メール形式が不正です。");
-        return;
-    }
-    if (password.length < 8) {
-        setInlineError(signupError, "パスワードは8文字以上で入力してください。");
-        return;
-    }
-    if (password !== passwordConfirm) {
-        setInlineError(signupError, "パスワードが一致しません。");
-        return;
-    }
-    if (!agreed) {
-        setInlineError(signupError, "利用規約への同意が必要です。");
+    const signupValidationError = validateSignupForm({
+        email,
+        password,
+        passwordConfirm,
+        agreed,
+        isValidEmail
+    });
+    if (signupValidationError) {
+        setInlineError(signupError, signupValidationError);
         return;
     }
 
@@ -2479,29 +2027,27 @@ async function emailPasswordSignup() {
     try {
         if (!firebaseAuth) {
             const localUser = await localSignup(email, password);
-            setStoredSession({ userId: localUser.id, email: localUser.email, loggedInAt: new Date().toISOString() });
-            setStoredPlanForUser(localUser.id, "plus");
-            applyAuthState({ isLoggedIn: true, user: localUser, plan: "plus" });
+            applyPlusActivation({
+                setStoredSession,
+                setStoredPlanForUser,
+                applyAuthState
+            }, localUser);
         } else {
             const { createUserWithEmailAndPassword } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
             const result = await createUserWithEmailAndPassword(firebaseAuth, email, password);
             if (result && result.user) {
-                const userInfo = { id: result.user.uid, email: result.user.email || email };
-                setStoredSession({
-                    userId: userInfo.id,
-                    email: userInfo.email,
-                    loggedInAt: new Date().toISOString()
-                });
-                setStoredPlanForUser(userInfo.id, "plus");
-                applyAuthState({
-                    isLoggedIn: true,
-                    user: userInfo,
-                    plan: "plus"
-                });
+                const userInfo = buildLocalUserAuth(result.user.email || email, result.user.uid);
+                applyPlusActivation({
+                    setStoredSession,
+                    setStoredPlanForUser,
+                    applyAuthState
+                }, userInfo);
             }
         }
-        closeSignupModal();
-        closePlusModal();
+        const closeState = getAuthSuccessCloseState({ closeSignup: true, closePlus: true });
+        if (closeState.closeSignup) closeSignupModal();
+        if (closeState.closePlus) closePlusModal();
+        if (closeState.clearPendingUpgrade) pendingUpgrade = false;
     } catch (err) {
         setInlineError(signupError, mapAuthError(err, "signup"));
     } finally {
@@ -2512,86 +2058,48 @@ async function emailPasswordSignup() {
 // ==================== 描画 ====================
 function renderEvents() {
     document.querySelectorAll(".event").forEach(e => e.remove());
-
-    const weekStart = getWeekStart(currentWeek);
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekStart.getDate() + 6);
-    weekEnd.setHours(23, 59, 59, 999);
+    const { weekStart, weekEnd } = getWeekRange(currentWeek, getWeekStart);
+    const groupedEvents = groupEventsByDay(collectStoredWeekEvents(days, weekStart, weekEnd));
 
     days.forEach((_, i) => {
-        const key = `events-day${i}`;
-        const events = JSON.parse(localStorage.getItem(key) || "[]");
-
+        const timeline = document.querySelector(`.timeline[data-day="${i}"]`);
+        if (!timeline) return;
+        const events = groupedEvents.get(i) || [];
         events.forEach(ev => {
-            const eventDate = ev.date ? new Date(ev.date) : null;
-
-            // ✅ 「繰り返し/単発」関係なく、その週に属する“その日のインスタンスだけ”表示
-            const inThisWeek = eventDate && eventDate >= weekStart && eventDate <= weekEnd;
-
-            if (inThisWeek) {
-                const timeline = document.querySelector(`.timeline[data-day="${i}"]`);
-                if (timeline) {
-                    const eventElement = createEventElement(ev);
-                    timeline.appendChild(eventElement);
-                }
-            }
+            const eventElement = createEventElement(ev);
+            timeline.appendChild(eventElement);
         });
     });
 }
 
 
-// ==================== イベント要素作成 ====================
-function isLightColor(hex) {
-    const cleaned = hex.replace("#", "");
-    if (cleaned.length !== 6) return false;
-    const r = parseInt(cleaned.slice(0, 2), 16);
-    const g = parseInt(cleaned.slice(2, 4), 16);
-    const b = parseInt(cleaned.slice(4, 6), 16);
-    const luminance = (0.299 * r + 0.587 * g + 0.114 * b);
-    return luminance > 170;
-}
-
 function createEventElement(ev) {
     const div = document.createElement("div");
     div.classList.add("event", ev.type);
-    const completed = !!ev.completed || (ev.type === "school" && ev.assigned);
-    if (completed) {
+    const completion = getEventCompletionState(ev);
+    if (completion.completed) {
         div.classList.add("completed");
     }
-    if (ev.type === 'school' && completed) {
-        div.classList.add('assigned');
+    if (completion.assigned) {
+        div.classList.add("assigned");
     }
     const customType = getCustomTypeById(ev.type);
-    if (customType) {
-        div.style.background = customType.color;
-        div.style.color = isLightColor(customType.color) ? "#222" : "#fff";
-    } else if (ev.typeColor) {
-        div.style.background = ev.typeColor;
-        if (String(ev.typeColor).startsWith("#")) {
-            div.style.color = isLightColor(ev.typeColor) ? "#222" : "#fff";
-        } else {
-            div.style.color = "#fff";
-        }
-    }
+    const colorStyle = getEventColorStyle(ev, customType);
+    if (colorStyle.background) div.style.background = colorStyle.background;
+    if (colorStyle.color) div.style.color = colorStyle.color;
     div.draggable = true;
 
-    const startMin = Math.round((ev.start % 1) * 60);
-    const endMin = Math.round((ev.end % 1) * 60);
-    const startStr = `${String(Math.floor(ev.start)).padStart(2, '0')}:${String(startMin).padStart(2, '0')}`;
-    const endStr = `${String(Math.floor(ev.end)).padStart(2, '0')}:${String(endMin).padStart(2, '0')}`;
-
-    div.textContent = `${ev.title} (${startStr}-${endStr})`;
-
-
-    div.style.top = (ev.start - startHour) * hourHeight + "px";
-    div.style.height = (ev.end - ev.start) * hourHeight + "px";
+    div.textContent = buildEventLabel(ev);
+    const positionStyle = getEventPositionStyle(ev, startHour, hourHeight);
+    div.style.top = positionStyle.top;
+    div.style.height = positionStyle.height;
 
     // ドラッグとの誤爆防止用フラグ
     let isDragging = false;
 
     div.addEventListener("dragstart", (e) => {
         isDragging = true;
-        e.dataTransfer.setData("text/plain", JSON.stringify(ev));
+        e.dataTransfer.setData("text/plain", serializeDraggedEvent(ev));
     });
 
     div.addEventListener("dragend", () => {
@@ -2606,7 +2114,7 @@ function createEventElement(ev) {
 
     div.addEventListener("click", (e) => {
         e.stopPropagation();
-        if (isDragging) return;              // ドラッグ時は無視
+        if (shouldIgnoreEventClick(isDragging)) return;
         toggleEventCompletion(ev);
         syncEventsToRemote();
     });
@@ -2620,60 +2128,21 @@ document.querySelectorAll(".timeline").forEach((tl) => {
     tl.addEventListener("dragover", (e) => e.preventDefault());
     tl.addEventListener("drop", (e) => {
         e.preventDefault();
-        const data = JSON.parse(e.dataTransfer.getData("text/plain"));
+        const data = parseDraggedEvent(e.dataTransfer.getData("text/plain"));
+        if (!data) return;
         const newDay = parseInt(tl.dataset.day);
-
-        const keyOld = `events-day${data.day}`;
-        let oldEvents = JSON.parse(localStorage.getItem(keyOld) || "[]");
-        oldEvents = oldEvents.filter((ev) => ev.id !== data.id);
-        localStorage.setItem(keyOld, JSON.stringify(oldEvents));
-
-        const keyNew = `events-day${newDay}`;
-        const newEvents = JSON.parse(localStorage.getItem(keyNew) || "[]");
-        newEvents.push({ ...data, day: newDay });
-        localStorage.setItem(keyNew, JSON.stringify(newEvents));
+        moveEventToDay(data.day, data.id, newDay, buildMovedEvent(data, newDay));
 
         renderEvents();
         syncEventsToRemote();
     });
 });
 
-// ==================== 繰り返し処理 ====================
-function generateRepeatDates(start, repeatType) {
-    const dates = [];
-    const maxRepeat = 52;
-    let current = new Date(start);
-
-    switch (repeatType) {
-        case 'daily':
-            for (let i = 0; i < maxRepeat; i++) {
-                current.setDate(current.getDate() + 1);
-                dates.push(new Date(current));
-            }
-            break;
-        case 'weekly':
-            for (let i = 0; i < maxRepeat; i++) {
-                current.setDate(current.getDate() + 7);
-                dates.push(new Date(current));
-            }
-            break;
-        case 'weekday':
-            for (let i = 0; i < maxRepeat * 2; i++) {
-                current.setDate(current.getDate() + 1);
-                if (current.getDay() !== 0 && current.getDay() !== 6) {
-                    dates.push(new Date(current));
-                }
-            }
-            break;
-    }
-    return dates;
-}
-
 // ==================== 初回描画 ====================
-syncTypeLabelCacheFromEvents();
+syncTypeLabelCacheFromEvents(collectAllLocalEvents());
 ensureCustomTypesFromCache();
-rebuildCustomTypesFromEvents();
-syncTypeLabelCacheFromTypes();
+rebuildCustomTypesFromEvents(collectAllLocalEvents());
+syncTypeLabelCacheFromTypes(getAllTypes());
 backfillEventTypeMeta();
 renderEvents();
 updateWeekView();
@@ -2728,25 +2197,45 @@ highlightCurrentDay();
     });
 })();
 
-document.addEventListener("DOMContentLoaded", async () => {
-    seedDefaultCustomTypesIfNeeded();
-    migrateBaseTypesToCustomIfNeeded();
-    bindUIHandlers();
-    setTypePanelOpen(false);
-    renderTypeOptions();
-    renderColorOptions();
-    renderTypeList();
-    bindColorSwatches();
-    applyAuthState({ isLoggedIn: false, plan: "free", user: null });
-    clearSyncMessage();
+async function initLegacyScheduleApp() {
+    runInitialUiSetup({
+        seedDefaultCustomTypesIfNeeded,
+        migrateBaseTypesToCustomIfNeeded,
+        bindUIHandlers,
+        setTypePanelOpen,
+        renderTypeOptions,
+        renderColorOptions,
+        renderTypeList,
+        bindColorSwatches,
+        applyAuthState,
+        clearSyncMessage
+    });
 
-    if (authLoginBtn) authLoginBtn.disabled = true;
-    if (signupSubmitBtn) signupSubmitBtn.disabled = true;
+    applyAuthButtonDisabledState({
+        setAuthLoginDisabled: disabled => {
+            if (authLoginBtn) authLoginBtn.disabled = disabled;
+        },
+        setSignupSubmitDisabled: disabled => {
+            if (signupSubmitBtn) signupSubmitBtn.disabled = disabled;
+        }
+    }, true);
 
     await initFirebaseSync();
 
     if (!firebaseInitFailed) {
-        if (authLoginBtn) authLoginBtn.disabled = false;
-        if (signupSubmitBtn) signupSubmitBtn.disabled = false;
+        applyAuthButtonDisabledState({
+            setAuthLoginDisabled: disabled => {
+                if (authLoginBtn) authLoginBtn.disabled = disabled;
+            },
+            setSignupSubmitDisabled: disabled => {
+                if (signupSubmitBtn) signupSubmitBtn.disabled = disabled;
+            }
+        }, false);
     }
-});
+}
+
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initLegacyScheduleApp, { once: true });
+} else {
+    initLegacyScheduleApp();
+}
