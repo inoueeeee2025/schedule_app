@@ -129,6 +129,17 @@ import {
 } from "./legacy-event-modal.js";
 import { buildTodoPanelLabel, getMemoButtonLabel } from "./legacy-todo-view.js";
 import {
+    canRedoLocalDataBackup,
+    canUndoLocalDataBackup,
+    getRedoLocalDataLabel,
+    getUndoLocalDataLabel,
+    hasLocalDataBackup,
+    purgeLocalDataBackups,
+    redoLocalDataBackup,
+    saveLocalDataBackup,
+    undoLocalDataBackup
+} from "./legacy-backup-store.js";
+import {
     buildNewTypeDraft,
     buildTypeListItems,
     findSelectedType,
@@ -258,6 +269,8 @@ const datePickerSearch = document.getElementById("datePickerSearch");
 const datePickerCalendarToggle = document.getElementById("datePickerCalendarToggle");
 const datePickerCalendar = document.getElementById("datePickerCalendar");
 const syncRefreshBtn = document.getElementById("syncRefresh");
+const undoBackupBtn = document.getElementById("undoBackup");
+const redoBackupBtn = document.getElementById("redoBackup");
 const syncMessage = document.getElementById("syncMessage");
 
 function setAuthUI(isLoggedIn, plan) {
@@ -297,6 +310,8 @@ let currentUid = null;
 let currentUser = null;
 let isProUser = false;
 let syncEnabled = false;
+let lastEventsMutationAt = 0;
+let lastTodosMutationAt = 0;
 
 let selectedDay = null;
 let modalSelectedDate = null;
@@ -307,6 +322,17 @@ let pendingUpgrade = false;
 let editingTypeId = null;
 let editingTypeIsBase = false;
 let typePanelLastFocus = null;
+const eventDraftStorageKey = "event-modal-draft";
+const currentWeekStorageKey = "current-week";
+const currentTodoDateStorageKey = "current-todo-date";
+const eventsDirtyStorageKey = "events-dirty";
+const todosDirtyStorageKey = "todos-dirty";
+const eventsMutationAtStorageKey = "events-mutation-at";
+const eventsSyncedAtStorageKey = "events-synced-at";
+const todosMutationAtStorageKey = "todos-mutation-at";
+const todosSyncedAtStorageKey = "todos-synced-at";
+const debugEventLogStorageKey = "debug-event-log";
+const debugEventLogLimit = 200;
 
 const seededTypeLabelCacheKey = "seeded-type-label-cache";
 const seededCustomTypesKey = "seeded-custom-types";
@@ -595,6 +621,86 @@ function showSyncMessage(message, tone = "warning") {
     syncMessage.style.display = state.display;
 }
 
+function updateBackupUi() {
+    const hasBackup = hasLocalDataBackup();
+    if (undoBackupBtn) {
+        const canUndo = hasBackup && canUndoLocalDataBackup();
+        undoBackupBtn.disabled = !canUndo;
+        const label = getUndoLocalDataLabel();
+        undoBackupBtn.title = label ? `元に戻す ${label}` : "元に戻す";
+        undoBackupBtn.setAttribute("aria-label", label ? `元に戻す ${label}` : "元に戻す");
+    }
+    if (redoBackupBtn) {
+        const canRedo = hasBackup && canRedoLocalDataBackup();
+        redoBackupBtn.disabled = !canRedo;
+        const label = getRedoLocalDataLabel();
+        redoBackupBtn.title = label ? `取り消し ${label}` : "取り消し";
+        redoBackupBtn.setAttribute("aria-label", label ? `取り消し ${label}` : "取り消し");
+    }
+}
+
+function hasAnyLocalTodoData() {
+    return Object.keys(localStorage).some(key => key.startsWith("todos-") || key.startsWith("todo-memo-"));
+}
+
+function snapshotLocalData() {
+    const backup = saveLocalDataBackup(days);
+    if (!backup) {
+        console.warn("[backup] local backup skipped due to storage quota");
+    }
+    updateBackupUi();
+}
+
+function cleanupLegacyStoragePressure() {
+    localStorage.removeItem("debug-event-log");
+    try {
+        const hasPressure = saveLocalDataBackup(days) === null;
+        if (hasPressure) {
+            purgeLocalDataBackups();
+        }
+    } catch {
+        purgeLocalDataBackups();
+    }
+}
+
+function ensureInitialBackup() {
+    if (hasLocalDataBackup()) {
+        updateBackupUi();
+        return;
+    }
+    if (!collectAllLocalEvents().length && !hasAnyLocalTodoData()) {
+        updateBackupUi();
+        return;
+    }
+    snapshotLocalData();
+}
+
+function refreshAfterHistoryRestore(message) {
+    markEventsDirty();
+    markTodosDirty();
+    renderEvents();
+    updateWeekView();
+    highlightCurrentDay();
+    if (currentTodoDateKey) {
+        renderTodoList(currentTodoDateKey);
+        renderTodoMemo(currentTodoDateKey);
+    }
+    showSyncMessage(message, "success");
+    updateBackupUi();
+    syncEventsToRemote();
+    syncTodosToRemote(currentTodoDateKey || undefined);
+}
+
+function undoLocalChanges() {
+    if (!undoLocalDataBackup(days)) return;
+    refreshAfterHistoryRestore("1つ前の状態に戻しました。");
+}
+
+function redoLocalChanges() {
+    if (!redoLocalDataBackup(days)) return;
+    refreshAfterHistoryRestore("取り消した変更を戻しました。");
+}
+
 function setInlineError(el, message) {
     if (!el) return;
     const state = getInlineErrorState(message);
@@ -620,6 +726,162 @@ function isValidEmail(email) {
 
 function normalizeEmail(email) {
     return (email || "").trim().toLowerCase();
+}
+
+function getDebugEventSnapshot() {
+    const localEvents = collectStoredEvents(days);
+    return {
+        currentWeek: currentWeek instanceof Date && !Number.isNaN(currentWeek.getTime()) ? currentWeek.toISOString() : null,
+        visibleWeek: buildWeekLabel(currentWeek),
+        localEventCount: localEvents.length,
+        localEvents: localEvents.map(ev => ({
+            id: ev.id,
+            baseId: ev.baseId,
+            title: ev.title,
+            day: ev.day,
+            date: ev.date,
+            start: ev.start,
+            end: ev.end
+        }))
+    };
+}
+
+function pushDebugEventLog(label, extra = {}) {
+    try {
+        const entry = {
+            at: new Date().toISOString(),
+            label,
+            ...extra,
+            snapshot: {
+                currentWeek: currentWeek instanceof Date && !Number.isNaN(currentWeek.getTime()) ? currentWeek.toISOString() : null,
+                localEventCount: collectStoredEvents(days).length
+            }
+        };
+        const raw = sessionStorage.getItem(debugEventLogStorageKey);
+        const logs = raw ? JSON.parse(raw) : [];
+        const nextLogs = Array.isArray(logs) ? [...logs, entry].slice(-debugEventLogLimit) : [entry];
+        sessionStorage.setItem(debugEventLogStorageKey, JSON.stringify(nextLogs));
+        console.log("[schedule-debug]", entry);
+    } catch (error) {
+        console.warn("[schedule-debug] failed to write log", error);
+    }
+}
+
+function saveCurrentWeekState() {
+    if (!(currentWeek instanceof Date) || Number.isNaN(currentWeek.getTime())) return;
+    localStorage.setItem(currentWeekStorageKey, currentWeek.toISOString());
+}
+
+function restoreCurrentWeekState() {
+    const raw = localStorage.getItem(currentWeekStorageKey);
+    if (!raw) return;
+    const restored = new Date(raw);
+    if (Number.isNaN(restored.getTime())) return;
+    currentWeek = restored;
+}
+
+function saveCurrentTodoState(dateISO) {
+    if (!dateISO) {
+        localStorage.removeItem(currentTodoDateStorageKey);
+        return;
+    }
+    localStorage.setItem(currentTodoDateStorageKey, dateISO);
+}
+
+function restoreCurrentTodoState() {
+    const dateISO = localStorage.getItem(currentTodoDateStorageKey);
+    if (!dateISO) return;
+    const restored = new Date(dateISO);
+    if (Number.isNaN(restored.getTime())) return;
+    openTodoForDate(restored);
+}
+
+function markEventsDirty() {
+    lastEventsMutationAt = Date.now();
+    localStorage.setItem(eventsMutationAtStorageKey, String(lastEventsMutationAt));
+    localStorage.setItem(eventsDirtyStorageKey, "1");
+}
+
+function markTodosDirty() {
+    lastTodosMutationAt = Date.now();
+    localStorage.setItem(todosMutationAtStorageKey, String(lastTodosMutationAt));
+    localStorage.setItem(todosDirtyStorageKey, "1");
+}
+
+function clearEventsDirty() {
+    localStorage.removeItem(eventsDirtyStorageKey);
+    localStorage.setItem(eventsSyncedAtStorageKey, String(Date.now()));
+}
+
+function clearTodosDirty() {
+    localStorage.removeItem(todosDirtyStorageKey);
+    localStorage.setItem(todosSyncedAtStorageKey, String(Date.now()));
+}
+
+function hasEventsDirty() {
+    return localStorage.getItem(eventsDirtyStorageKey) === "1";
+}
+
+function hasTodosDirty() {
+    return localStorage.getItem(todosDirtyStorageKey) === "1";
+}
+
+function getStoredNumber(key) {
+    const raw = localStorage.getItem(key);
+    if (!raw) return 0;
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : 0;
+}
+
+function shouldPreferLocalEvents(hydrateStartedAt, hasLocalEvents) {
+    const mutationAt = Math.max(lastEventsMutationAt, getStoredNumber(eventsMutationAtStorageKey));
+    const syncedAt = getStoredNumber(eventsSyncedAtStorageKey);
+    return hasLocalEvents && (hasEventsDirty() || mutationAt > syncedAt || mutationAt > hydrateStartedAt);
+}
+
+function shouldPreferLocalTodos(hydrateStartedAt) {
+    const mutationAt = Math.max(lastTodosMutationAt, getStoredNumber(todosMutationAtStorageKey));
+    const syncedAt = getStoredNumber(todosSyncedAtStorageKey);
+    return hasTodosDirty() || mutationAt > syncedAt || mutationAt > hydrateStartedAt;
+}
+
+function loadEventDraft() {
+    try {
+        const raw = localStorage.getItem(eventDraftStorageKey);
+        return raw ? JSON.parse(raw) : null;
+    } catch {
+        return null;
+    }
+}
+
+function clearEventDraft() {
+    localStorage.removeItem(eventDraftStorageKey);
+}
+
+function saveEventDraft() {
+    if (editingEvent || !modal || modal.style.display !== "flex" || selectedDay == null) return;
+    const payload = {
+        title: titleInput ? titleInput.value || "" : "",
+        type: typeSelect ? typeSelect.value || "" : "",
+        start: startInput ? startInput.value || "09:00" : "09:00",
+        end: endInput ? endInput.value || "10:00" : "10:00",
+        repeat: repeatSelect ? repeatSelect.value || "none" : "none",
+        tapToggle: !!(tapToggleInput && tapToggleInput.checked)
+    };
+    localStorage.setItem(eventDraftStorageKey, JSON.stringify(payload));
+}
+
+function applyEventDraft() {
+    if (editingEvent) return false;
+    const draft = loadEventDraft();
+    if (!draft) return false;
+    titleInput.value = draft.title || "";
+    renderTypeOptions(draft.type || typeSelect.value || undefined, draft.type || undefined);
+    startInput.value = draft.start || "09:00";
+    endInput.value = draft.end || "10:00";
+    repeatSelect.value = draft.repeat || "none";
+    tapToggleInput.checked = !!draft.tapToggle;
+    return true;
 }
 
 function bufferToBase64(buffer) {
@@ -823,6 +1085,8 @@ function bindUIHandlers() {
     if (syncRefreshBtn) {
         syncRefreshBtn.addEventListener("click", () => refreshPlanStatus({ forceRefresh: true, announce: true }));
     }
+    if (undoBackupBtn) undoBackupBtn.addEventListener("click", undoLocalChanges);
+    if (redoBackupBtn) redoBackupBtn.addEventListener("click", redoLocalChanges);
     if (typePickerBtn) {
         typePickerBtn.addEventListener("click", (e) => {
             e.preventDefault();
@@ -832,8 +1096,14 @@ function bindUIHandlers() {
     if (typeSelect) {
         typeSelect.addEventListener("change", () => {
             renderTypePicker(getAllTypes(), typeSelect.value);
+            saveEventDraft();
         });
     }
+    if (titleInput) titleInput.addEventListener("input", saveEventDraft);
+    if (startInput) startInput.addEventListener("input", saveEventDraft);
+    if (endInput) endInput.addEventListener("input", saveEventDraft);
+    if (repeatSelect) repeatSelect.addEventListener("change", saveEventDraft);
+    if (tapToggleInput) tapToggleInput.addEventListener("change", saveEventDraft);
     typeAddBtn.addEventListener("click", addCustomType);
     typeAddOpenBtn.addEventListener("click", () => {
         setTypePanelOpen(true);
@@ -896,6 +1166,12 @@ function openModal(eventObj = null) {
     deleteBtn.style.display = viewState.deleteButtonDisplay;
     deleteScopeRow.style.display = viewState.deleteScopeRowDisplay;
     deleteScopeSelect.value = viewState.deleteScopeValue;
+    if (!eventObj) {
+        applyEventDraft();
+        saveEventDraft();
+    } else {
+        clearEventDraft();
+    }
 }
 
 function openDatePicker() {
@@ -918,6 +1194,7 @@ function jumpToSelectedDate() {
     const selected = getDatePickerValue();
     if (!selected) return;
     currentWeek = selected;
+    saveCurrentWeekState();
     updateWeekView();
     highlightCurrentDay();
     closeDatePicker();
@@ -1015,6 +1292,7 @@ function renderDatePickerCalendar() {
             const selected = getDatePickerValue();
             if (!selected) return;
             currentWeek = selected;
+            saveCurrentWeekState();
             updateWeekView();
             highlightCurrentDay();
             closeDatePicker();
@@ -1036,11 +1314,13 @@ function highlightCurrentDay() {
 // ==================== 週切り替え ====================
 document.getElementById('prevWeek').addEventListener('click', () => {
     currentWeek.setDate(currentWeek.getDate() - 7);
+    saveCurrentWeekState();
     updateWeekView();
 });
 
 document.getElementById('nextWeek').addEventListener('click', () => {
     currentWeek.setDate(currentWeek.getDate() + 7);
+    saveCurrentWeekState();
     updateWeekView();
 });
 
@@ -1081,6 +1361,8 @@ function renderTodoList(dateISO) {
         cb.checked = !!item.done;
         cb.onchange = () => {
             saveTodos(dateISO, toggleTodoItem(items, item.id, cb.checked));
+            markTodosDirty();
+            snapshotLocalData();
             renderTodoList(dateISO);
         };
 
@@ -1093,6 +1375,8 @@ function renderTodoList(dateISO) {
         del.textContent = "削除";
         del.onclick = () => {
             saveTodos(dateISO, deleteTodoItem(items, item.id));
+            markTodosDirty();
+            snapshotLocalData();
             renderTodoList(dateISO);
             syncTodosToRemote(dateISO);
         };
@@ -1106,6 +1390,8 @@ function renderTodoList(dateISO) {
             const trimmed = nextText.trim();
             if (!trimmed) return;
             saveTodos(dateISO, editTodoItem(items, item.id, trimmed));
+            markTodosDirty();
+            snapshotLocalData();
             renderTodoList(dateISO);
             syncTodosToRemote(dateISO);
         };
@@ -1121,6 +1407,7 @@ function renderTodoList(dateISO) {
 function openTodoForDate(dateObj) {
     const dateISO = toISODate(dateObj);
     currentTodoDateKey = dateISO;
+    saveCurrentTodoState(dateISO);
 
     todoDateLabel.textContent = buildTodoPanelLabel(dateObj, toJPLabel);
     renderTodoList(dateISO);
@@ -1137,6 +1424,8 @@ function openTodoForDate(dateObj) {
 function closeTodoPanel() {
     todoPanel.classList.remove("open");
     todoPanel.setAttribute("aria-hidden", "true");
+    currentTodoDateKey = null;
+    saveCurrentTodoState(null);
 }
 
 todoClose.addEventListener("click", closeTodoPanel);
@@ -1149,6 +1438,8 @@ function addTodo() {
     const text = todoInput.value.trim();
     if (!text || !currentTodoDateKey) return;
     saveTodos(currentTodoDateKey, addTodoItem(loadTodos(currentTodoDateKey), text));
+    markTodosDirty();
+    snapshotLocalData();
     todoInput.value = "";
     renderTodoList(currentTodoDateKey);
     syncTodosToRemote(currentTodoDateKey);
@@ -1171,13 +1462,12 @@ function setMemoViewMode(hasText) {
 }
 
 todoAdd.addEventListener("click", addTodo);
-todoInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") addTodo();
-});
 
 todoMemoSave.addEventListener("click", () => {
     if (!currentTodoDateKey) return;
     saveTodoMemo(currentTodoDateKey, todoMemo.value || "");
+    markTodosDirty();
+    snapshotLocalData();
     renderTodoMemo(currentTodoDateKey);
     syncTodosToRemote(currentTodoDateKey);
 });
@@ -1188,11 +1478,15 @@ todoMemoEdit.addEventListener("click", () => {
 todoMemo.addEventListener("blur", () => {
     if (!currentTodoDateKey) return;
     saveTodoMemo(currentTodoDateKey, todoMemo.value || "");
+    markTodosDirty();
+    snapshotLocalData();
 });
 
 todoClearDone.addEventListener("click", () => {
     if (!currentTodoDateKey) return;
     saveTodos(currentTodoDateKey, clearCompletedTodoItems(loadTodos(currentTodoDateKey)));
+    markTodosDirty();
+    snapshotLocalData();
     renderTodoList(currentTodoDateKey);
     syncTodosToRemote(currentTodoDateKey);
 });
@@ -1216,6 +1510,8 @@ function toggleEventCompletion(ev) {
     }
 
     saveEventsForDay(ev.day, events);
+    markEventsDirty();
+    snapshotLocalData();
     renderEvents(); // 反映
     syncEventsToRemote();
 }
@@ -1253,6 +1549,15 @@ function saveEvent() {
 
     const repeatDates = repeat !== "none" ? generateRepeatDates(draft.eventDate, repeat) : [];
     saveEventSeries(days, selectedDay, draft.newEvent, draft.changeStartDate, repeatDates, getMondayBasedDayIndex);
+    pushDebugEventLog("saveEvent:afterSaveEventSeries", {
+        selectedDay,
+        newEventId: draft.newEvent.id,
+        newEventDate: draft.newEvent.date,
+        repeat
+    });
+    markEventsDirty();
+    snapshotLocalData();
+    clearEventDraft();
 
     const closeState = getClosedEventModalState();
     modal.style.display = closeState.display;
@@ -1274,6 +1579,8 @@ function deleteEvent() {
 
     const scope = deleteScopeSelect ? deleteScopeSelect.value : "future";
     deleteEventByScope(editingEvent, scope);
+    markEventsDirty();
+    snapshotLocalData();
     const closeState = getClosedEventModalState();
     modal.style.display = closeState.display;
     setTypePanelOpen(false);
@@ -1342,6 +1649,8 @@ function bulkDeleteSelected() {
     }
     const scope = bulkDeleteScope ? bulkDeleteScope.value : "single";
     collectBulkDeleteTargets(checked, scope).forEach(target => deleteEventByScope(target, scope));
+    markEventsDirty();
+    snapshotLocalData();
 
     closeBulkModal();
     renderEvents();
@@ -1737,6 +2046,7 @@ function addCustomType() {
     customTypes.push(draft);
     saveCustomTypes(customTypes);
     updateTypeLabelCache(draft.id, draft.label, draft.color);
+    snapshotLocalData();
     renderTypeOptions(draft.id);
     renderTypeList();
     typeNewInput.value = "";
@@ -1774,6 +2084,7 @@ function saveEditedType() {
         saveCustomTypes(updated);
     }
     updateTypeLabelCache(editingTypeId, label, color);
+    snapshotLocalData();
     renderTypeOptions(editingTypeId);
     renderTypeList();
     clearTypeEdit();
@@ -1817,6 +2128,7 @@ function deleteType(id) {
 
     const remainingTypes = getAllTypes();
     const fallbackId = remainingTypes.length ? remainingTypes[0].id : null;
+    snapshotLocalData();
     renderTypeOptions(fallbackId || undefined);
     renderTypeList();
     clearTypeEdit();
@@ -1835,6 +2147,7 @@ function collectAllLocalEvents() {
 
 async function hydrateFromRemote() {
     if (!syncEnabled || !firestore || !currentUid) return;
+    const hydrateStartedAt = Date.now();
     try {
         const { collection, getDocs } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
         const eventsSnap = await getDocs(collection(firestore, "users", currentUid, "events"));
@@ -1849,14 +2162,27 @@ async function hydrateFromRemote() {
         const localEvents = collectAllLocalEvents();
         const hasRemoteEvents = remoteEvents.length > 0;
         const hasRemoteTodos = remoteTodos.length > 0;
+        const preferLocalEvents = shouldPreferLocalEvents(hydrateStartedAt, localEvents.length > 0);
+        const preferLocalTodos = shouldPreferLocalTodos(hydrateStartedAt);
+        pushDebugEventLog("hydrateFromRemote:decision", {
+            remoteEventCount: remoteEvents.length,
+            localEventCountBeforeHydrate: localEvents.length,
+            hasRemoteEvents,
+            preferLocalEvents,
+            preferLocalTodos
+        });
 
-        if (hasRemoteEvents) {
+        if (preferLocalEvents) {
+            await syncEventsToRemote();
+        } else if (hasRemoteEvents) {
             resetLocalEvents(remoteEvents);
         } else if (localEvents.length) {
             await syncEventsToRemote(); // 初回: ローカルをアップロード
         }
 
-        if (hasRemoteTodos) {
+        if (preferLocalTodos) {
+            await syncTodosToRemote(); // ローカル未同期を優先してアップロード
+        } else if (hasRemoteTodos) {
             resetLocalTodos(remoteTodos);
         } else {
             await syncTodosToRemote(); // 現在の全ToDoをアップロード
@@ -1870,7 +2196,14 @@ async function hydrateFromRemote() {
 }
 
 function resetLocalEvents(events) {
+    pushDebugEventLog("resetLocalEvents:before", {
+        incomingEventCount: Array.isArray(events) ? events.length : 0
+    });
     resetStoredEvents(days, events);
+    updateBackupUi();
+    pushDebugEventLog("resetLocalEvents:after", {
+        incomingEventCount: Array.isArray(events) ? events.length : 0
+    });
 }
 
 function resetLocalTodos(remoteTodos) {
@@ -1879,6 +2212,7 @@ function resetLocalTodos(remoteTodos) {
         saveTodos(id, items || []);
         saveTodoMemo(id, memo || "");
     });
+    updateBackupUi();
     if (currentTodoDateKey) {
         renderTodoList(currentTodoDateKey);
         renderTodoMemo(currentTodoDateKey);
@@ -1893,6 +2227,10 @@ async function syncEventsToRemote() {
         const snap = await getDocs(colRef);
         const localEvents = collectAllLocalEvents();
         const localIds = new Set(localEvents.map(ev => String(ev.id)));
+        pushDebugEventLog("syncEventsToRemote:start", {
+            remoteDocCount: snap.size,
+            localEventCount: localEvents.length
+        });
 
         const batch = writeBatch(firestore);
         snap.forEach(d => {
@@ -1902,6 +2240,10 @@ async function syncEventsToRemote() {
             batch.set(doc(colRef, String(ev.id)), ev);
         });
         await batch.commit();
+        clearEventsDirty();
+        pushDebugEventLog("syncEventsToRemote:done", {
+            localEventCount: localEvents.length
+        });
     } catch (err) {
         handleSyncError(err);
     }
@@ -1939,6 +2281,7 @@ async function syncTodosToRemote(targetDate) {
         }
 
         await batch.commit();
+        clearTodosDirty();
     } catch (err) {
         handleSyncError(err);
     }
@@ -2059,7 +2402,13 @@ async function emailPasswordSignup() {
 function renderEvents() {
     document.querySelectorAll(".event").forEach(e => e.remove());
     const { weekStart, weekEnd } = getWeekRange(currentWeek, getWeekStart);
-    const groupedEvents = groupEventsByDay(collectStoredWeekEvents(days, weekStart, weekEnd));
+    const weekEvents = collectStoredWeekEvents(days, weekStart, weekEnd);
+    const groupedEvents = groupEventsByDay(weekEvents);
+    pushDebugEventLog("renderEvents", {
+        renderedEventCount: weekEvents.length,
+        weekStart: weekStart.toISOString(),
+        weekEnd: weekEnd.toISOString()
+    });
 
     days.forEach((_, i) => {
         const timeline = document.querySelector(`.timeline[data-day="${i}"]`);
@@ -2132,6 +2481,8 @@ document.querySelectorAll(".timeline").forEach((tl) => {
         if (!data) return;
         const newDay = parseInt(tl.dataset.day);
         moveEventToDay(data.day, data.id, newDay, buildMovedEvent(data, newDay));
+        markEventsDirty();
+        snapshotLocalData();
 
         renderEvents();
         syncEventsToRemote();
@@ -2198,6 +2549,19 @@ highlightCurrentDay();
 })();
 
 async function initLegacyScheduleApp() {
+    restoreCurrentWeekState();
+    cleanupLegacyStoragePressure();
+    ensureInitialBackup();
+    window.__scheduleDebug = {
+        getLogs: () => {
+            const raw = sessionStorage.getItem(debugEventLogStorageKey);
+            return raw ? JSON.parse(raw) : [];
+        },
+        clearLogs: () => sessionStorage.removeItem(debugEventLogStorageKey),
+        snapshot: () => getDebugEventSnapshot()
+    };
+    pushDebugEventLog("initLegacyScheduleApp:start");
+
     runInitialUiSetup({
         seedDefaultCustomTypesIfNeeded,
         migrateBaseTypesToCustomIfNeeded,
@@ -2232,6 +2596,10 @@ async function initLegacyScheduleApp() {
             }
         }, false);
     }
+
+    restoreCurrentTodoState();
+    updateBackupUi();
+    pushDebugEventLog("initLegacyScheduleApp:done");
 }
 
 if (document.readyState === "loading") {

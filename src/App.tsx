@@ -16,6 +16,30 @@ function LegacyScheduleShell() {
           </button>
         </div>
         <div className="week-nav-controls">
+          <div className="history-actions" aria-label="履歴操作">
+            <button
+              id="undoBackup"
+              className="history-action"
+              type="button"
+              aria-label="元に戻す"
+              title="元に戻す"
+            >
+              <span className="history-symbol" aria-hidden="true">
+                ↺
+              </span>
+            </button>
+            <button
+              id="redoBackup"
+              className="history-action"
+              type="button"
+              aria-label="取り消し"
+              title="取り消し"
+            >
+              <span className="history-symbol" aria-hidden="true">
+                ↻
+              </span>
+            </button>
+          </div>
           <button id="prevWeek">←</button>
           <button id="weekLabel" className="week-label-btn" type="button">
             2025年10月第4週
@@ -222,7 +246,7 @@ function LegacyScheduleShell() {
           </div>
 
           <div className="todo-input-row">
-            <input id="todoInput" type="text" placeholder="やることを入力してEnter…" />
+            <input id="todoInput" type="text" placeholder="やることを入力" />
             <button id="todoAdd">追加</button>
           </div>
 
@@ -445,7 +469,7 @@ export default function App() {
     const script = document.createElement("script");
     script.id = "legacy-schedule-script";
     script.type = "module";
-    script.src = "/script.js?v=20260203";
+    script.src = "/script.js?v=20260415-2";
     document.body.appendChild(script);
 
     if ("serviceWorker" in navigator) {

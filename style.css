@@ -125,6 +125,50 @@
   background: #ffedd5;
 }
 
+.history-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #475569;
+  cursor: pointer;
+  border-radius: 999px;
+  transition: color 0.18s ease, background-color 0.18s ease, opacity 0.18s ease;
+}
+
+.history-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.history-symbol {
+  display: block;
+  font-size: 16px;
+  line-height: 1;
+  font-weight: 500;
+}
+
+.history-action:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.14);
+  color: #0f172a;
+}
+
+.history-action:focus-visible {
+  outline: 2px solid #94a3b8;
+  outline-offset: 2px;
+}
+
+.history-action:disabled {
+  color: #cbd5e1;
+  cursor: default;
+}
+
 .sync-message {
   display: none;
   font-size: 12px;

@@ -151,10 +151,10 @@ export function isLightColor(hex) {
 }
 
 export function getEventCompletionState(ev) {
-    const completed = !!ev.completed || (ev.type === "school" && ev.assigned);
+    const completed = !!ev.completed;
     return {
         completed,
-        assigned: ev.type === "school" && completed
+        assigned: false
     };
 }
 
