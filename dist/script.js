@@ -1494,9 +1494,7 @@ todoClearDone.addEventListener("click", () => {
 
 
 function toggleEventCompletion(ev) {
-    const canToggle = typeof ev.tapToggle === "boolean"
-        ? ev.tapToggle
-        : ev.type === "school";
+    const canToggle = true;
     if (!canToggle) return;
     const events = loadEventsForDay(ev.day);
     const idx = events.findIndex(x => x.id === ev.id);
@@ -1505,9 +1503,7 @@ function toggleEventCompletion(ev) {
     const nextCompleted = !events[idx].completed;
     events[idx].tapToggle = canToggle;
     events[idx].completed = nextCompleted;
-    if (events[idx].type === "school") {
-        events[idx].assigned = nextCompleted;
-    }
+    events[idx].assigned = false;
 
     saveEventsForDay(ev.day, events);
     markEventsDirty();

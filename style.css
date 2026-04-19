@@ -273,7 +273,8 @@
 }
 
 .event.completed {
-  filter: grayscale(0.7) brightness(1.05);
+  filter: grayscale(0.35);
+  opacity: 0.82;
 }
 
 /* 濶ｲ */
@@ -1401,8 +1402,8 @@
 
 /* 蟄ｦ譬｡竊定ｪｲ鬘悟・縺励◆繝輔Λ繧ｰ・郁埋縺・げ繝ｬ繝ｼ・・*/
 .event.school.assigned {
-  background: rgba(200, 200, 200, 0.8);
-  color: #222;
+  background: rgba(34, 34, 34, 0.75);
+  color: #fff;
 }
 
 /* ===== ToDo 繝代ロ繝ｫ ===== */
