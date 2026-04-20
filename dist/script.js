@@ -1503,6 +1503,7 @@ function toggleEventCompletion(ev) {
     const nextCompleted = !events[idx].completed;
     events[idx].tapToggle = canToggle;
     events[idx].completed = nextCompleted;
+    events[idx].completionTouched = true;
     events[idx].assigned = false;
 
     saveEventsForDay(ev.day, events);

@@ -166,6 +166,13 @@ export function getEventPositionStyle(ev, startHour, hourHeight) {
 }
 
 export function getEventColorStyle(ev, customType) {
+    if (ev?.type === "school") {
+        return {
+            background: "",
+            color: ""
+        };
+    }
+
     if (customType) {
         return {
             background: customType.color,

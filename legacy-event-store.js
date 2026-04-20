@@ -92,7 +92,10 @@ export function saveEventSeries(days, selectedDay, newEvent, changeStartDate, re
             ...newEvent,
             id: Date.now() + Math.random(),
             day: dayIndex,
-            date: date.toISOString()
+            date: date.toISOString(),
+            completed: false,
+            assigned: false,
+            completionTouched: false
         });
         saveEventsForDay(dayIndex, repeatedEvents);
     });
@@ -164,4 +167,93 @@ export function moveEventToDay(sourceDay, eventId, newDay, nextEvent) {
     const newEvents = loadEventsForDay(newDay);
     newEvents.push(nextEvent);
     saveEventsForDay(newDay, newEvents);
+}
+
+export function resetFutureEventCompletion(days, thresholdDate) {
+    let changed = false;
+    const normalizedThreshold = new Date(thresholdDate);
+    normalizedThreshold.setHours(0, 0, 0, 0);
+
+    days.forEach((_, i) => {
+        const events = loadEventsForDay(i);
+        let dayChanged = false;
+        const updated = events.map((ev) => {
+            if (!ev?.date) return ev;
+            const eventDate = new Date(ev.date);
+            eventDate.setHours(0, 0, 0, 0);
+            if (Number.isNaN(eventDate.getTime()) || eventDate < normalizedThreshold) return ev;
+            if (!ev.completed && !ev.assigned) return ev;
+            dayChanged = true;
+            changed = true;
+            return {
+                ...ev,
+                completed: false,
+                assigned: false
+            };
+        });
+
+        if (dayChanged) {
+            saveEventsForDay(i, updated);
+        }
+    });
+
+    return changed;
+}
+
+export function resetWeekEventCompletion(days, weekStart, weekEnd) {
+    let changed = false;
+
+    days.forEach((_, i) => {
+        const events = loadEventsForDay(i);
+        let dayChanged = false;
+        const updated = events.map((ev) => {
+            if (!ev?.date) return ev;
+            const eventDate = new Date(ev.date);
+            if (Number.isNaN(eventDate.getTime())) return ev;
+            if (eventDate < weekStart || eventDate > weekEnd) return ev;
+            if (ev.completionTouched === true) return ev;
+            if (!ev.completed && !ev.assigned) return ev;
+
+            dayChanged = true;
+            changed = true;
+            return {
+                ...ev,
+                completed: false,
+                assigned: false
+            };
+        });
+
+        if (dayChanged) {
+            saveEventsForDay(i, updated);
+        }
+    });
+
+    return changed;
+}
+
+export function resetAllEventCompletion(days) {
+    let changed = false;
+
+    days.forEach((_, i) => {
+        const events = loadEventsForDay(i);
+        let dayChanged = false;
+        const updated = events.map((ev) => {
+            if (!ev) return ev;
+            if (!ev.completed && !ev.assigned && !ev.completionTouched) return ev;
+            dayChanged = true;
+            changed = true;
+            return {
+                ...ev,
+                completed: false,
+                assigned: false,
+                completionTouched: false
+            };
+        });
+
+        if (dayChanged) {
+            saveEventsForDay(i, updated);
+        }
+    });
+
+    return changed;
 }

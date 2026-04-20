@@ -83,6 +83,9 @@ export function buildEventDraft(input, context = {}) {
             tapToggle: !!input.tapToggle,
             completed: input.editingEvent
                 ? !!input.editingEvent.completed || (input.editingEvent.type === "school" && input.editingEvent.assigned)
+                : false,
+            completionTouched: input.editingEvent
+                ? !!input.editingEvent.completionTouched
                 : false
         }
     };
