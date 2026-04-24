@@ -469,7 +469,7 @@ export default function App() {
     const script = document.createElement("script");
     script.id = "legacy-schedule-script";
     script.type = "module";
-    script.src = "/script.js?v=20260415-2";
+    script.src = "/script.js?v=20260424-1";
     document.body.appendChild(script);
 
     if ("serviceWorker" in navigator) {

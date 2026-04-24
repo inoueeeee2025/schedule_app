@@ -163,7 +163,7 @@ import {
 } from "./legacy-app-init.js";
 
 const days = ["月", "火", "水", "木", "金", "土", "日"];
-const startHour = 6;
+const startHour = 5;
 const endHour = 24;
 const hourHeight = 40;
 
